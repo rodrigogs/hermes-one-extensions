@@ -1,0 +1,54 @@
+{
+  "extensions": [
+    {
+      "id": "hermes-panel",
+      "name": "Hermes Panel System",
+      "scripts": [],
+      "stylesheets": [
+        "hermes-panel/hermes-panel.css"
+      ]
+    },
+    {
+      "id": "office-3d-launcher",
+      "name": "Office 3D",
+      "scripts": [
+        "office-3d-launcher/office-nav.js"
+      ],
+      "stylesheets": [
+        "office-3d-launcher/office-nav.css"
+      ]
+    },
+    {
+      "id": "capability-router",
+      "name": "Capability Router",
+      "scripts": [
+        "capability-router/router-nav.js"
+      ],
+      "stylesheets": [
+        "capability-router/router-nav.css"
+      ],
+      "sidecar": {
+        "type": "loopback",
+        "origin": "http://127.0.0.1:8791",
+        "health_path": "/health",
+        "proxy_auth": "token-v1"
+      }
+    },
+    {
+      "id": "memory-graph",
+      "name": "Memory Graph",
+      "scripts": [
+        "memory-graph/memory-nav.js"
+      ],
+      "stylesheets": [
+        "memory-graph/memory-nav.css"
+      ],
+      "sidecar": {
+        "type": "loopback",
+        "origin": "http://127.0.0.1:8792",
+        "health_path": "/health",
+        "proxy_auth": "token-v1"
+      }
+    }
+  ]
+}

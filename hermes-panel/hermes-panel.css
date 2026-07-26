@@ -1,0 +1,270 @@
+/* Hermes One panel system — the shared visual contract.
+ *
+ * Three surfaces (router console, memory graph, office 3D) previously carried
+ * three palettes, three chip shapes and three type scales, so an operator had to
+ * learn three interfaces for one agent. This file is the single source of those
+ * tokens; see DESIGN.md for the reasoning behind each rule.
+ *
+ * Loaded by the host page as an extension stylesheet, and inlined into the
+ * srcdoc consoles (they are separate documents and cannot inherit it).
+ */
+
+/* Scoped to .hermes-panel ONLY, never :root.
+ *
+ * The host has its own theme — measured live, it sets --bg: #0D0D1A and
+ * --text: #FFF8DC on :root. Declaring these at :root meant whichever stylesheet
+ * loaded last won, so the panels' colours depended on extension load order and
+ * the host's own chrome could be repainted by an extension. Scoping keeps the
+ * panel system inside the panels and leaves the shell's theme alone. */
+.hermes-panel {
+  /* Surfaces: near-black, because these are read in a dark IDE-adjacent shell. */
+  --bg: #0a0a0c;
+  --surface: #101013;
+  --surface-raised: #15151a;
+  --surface-hover: #1c1c23;
+  --line: #212127;
+  --line-strong: #33333d;
+
+  /* Text. Measured against --bg: 15.8:1, 6.1:1, 3.6:1 — the last is used only
+     for non-essential labels, never for prose. */
+  --text: #f3f3f6;
+  --muted: #9a9aa8;
+  --faint: #61616e;
+
+  /* Emphasis is contrast, not hue: a brand colour here would compete with the
+     state colours below and make both mean less. */
+  --accent: #f3f3f6;
+  --accent-strong: #ffffff;
+
+  /* State. These four are the ONLY meaningful colours, and they mean the same
+     thing on every surface. */
+  --ok: #4ade9b;
+  --warn: #f7b955;
+  --bad: #ff6b7d;
+  --info: #b490ff;
+
+  --mono: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace;
+  --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  /* Four steps, ~1.25 apart. Anything between them reads as an accident. */
+  --t-label: 10.5px;
+  --t-body: 13px;
+  --t-value: 16px;
+  --t-head: 20px;
+
+  --radius: 7px;
+  --radius-input: 9px;
+  --focus: 0 0 0 3px rgba(243, 243, 246, .22);
+
+  /* One authored moment, not scattered effects. */
+  --ease: cubic-bezier(.16, 1, .3, 1);
+  --enter: 160ms;
+}
+
+/* ── the shared masthead ────────────────────────────────────────────────
+   Every panel opens with the same bar: wordmark, then the surface's own
+   controls, then live state. No breadcrumb (the host rail already says where
+   you are) and no decorative subtitle. */
+.hp-bar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 20px;
+  min-height: 44px;
+  padding: 11px clamp(14px, 2.2vw, 26px);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.hp-mark {
+  font: 600 var(--t-label) var(--mono);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--text);
+  white-space: nowrap;
+}
+.hp-mark span { color: var(--faint); }
+
+/* State on the right: a dot and a word, never a decorative badge. */
+.hp-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  color: var(--faint);
+  font: var(--t-label) var(--mono);
+  white-space: nowrap;
+}
+.hp-stat { display: flex; flex-direction: column; gap: 1px; }
+/* The label/value pair is given exact line boxes: 12 + 1 + 18 = 31px, which is
+   the content height the two console mastheads already compute from their tabs
+   and their search field. Left to `normal`, the mono metrics made this block
+   32px, so the office bar stood 1px taller than the other two and the wordmark
+   shifted when switching panels. */
+.hp-stat-label {
+  color: var(--faint);
+  font: var(--t-label)/12px var(--mono);
+  letter-spacing: .13em;
+  text-transform: uppercase;
+}
+.hp-stat-value {
+  color: var(--text);
+  font: 500 var(--t-value)/18px var(--mono);
+  letter-spacing: -.01em;
+  font-variant-numeric: tabular-nums;
+}
+/* A stat that carries a state dot aligns it optically with the digits instead of
+   relying on a JSX whitespace node for the gap. */
+.hp-stat-value--dot { display: inline-flex; align-items: center; gap: 7px; }
+
+.hp-dot {
+  width: 6px; height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.hp-dot.is-ok   { background: var(--ok);   box-shadow: 0 0 0 3px rgba(74, 222, 155, .12); }
+.hp-dot.is-warn { background: var(--warn); box-shadow: 0 0 0 3px rgba(247, 185, 85, .12); }
+.hp-dot.is-bad  { background: var(--bad);  box-shadow: 0 0 0 3px rgba(255, 107, 125, .12); }
+.hp-dot.is-info { background: var(--info); box-shadow: 0 0 0 3px rgba(180, 144, 255, .12); }
+
+/* ── controls ──────────────────────────────────────────────────────────── */
+.hp-btn {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 7px 14px;
+  background: transparent;
+  color: var(--muted);
+  font: 500 var(--t-body) var(--sans);
+  cursor: pointer;
+}
+.hp-btn:hover { border-color: var(--accent); color: var(--text); background: var(--surface-raised); }
+.hp-btn[disabled] { opacity: .55; cursor: default; }
+/* The committing action is the only inverted element on a screen. */
+.hp-btn.is-primary { border-color: var(--text); background: var(--text); color: var(--bg); }
+.hp-btn.is-primary:hover { background: var(--accent-strong); color: var(--bg); }
+.hp-btn.is-danger { border-color: rgba(255, 107, 125, .45); color: #ffc7ce; }
+
+.hp-quiet {
+  border: 0; padding: 4px 0;
+  background: none;
+  color: var(--faint);
+  font: 500 var(--t-body) var(--sans);
+  cursor: pointer;
+}
+.hp-quiet:hover { color: var(--text); }
+
+.hp-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-input);
+  background: var(--surface);
+  color: var(--text);
+  font: var(--t-body) var(--mono);
+}
+.hp-input::placeholder { color: var(--faint); }
+.hp-input:focus { border-color: var(--line-strong); }
+
+:where(.hermes-panel, .hp-bar) :focus-visible { outline: none; box-shadow: var(--focus); }
+
+/* ── rows: the one structural primitive ────────────────────────────────
+   A group is made by space, not by a box. No card nests. */
+.hp-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.hp-row:last-child { border-bottom: 0; }
+.hp-row-name { font: 500 13.5px var(--mono); overflow-wrap: anywhere; }
+.hp-row-note { color: var(--faint); font-size: var(--t-body); margin-top: 1px; }
+
+.hp-kicker {
+  color: var(--faint);
+  font: 600 var(--t-label) var(--mono);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.hp-group { margin-top: 34px; }
+.hp-group > .hp-kicker {
+  display: block;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* An absence with a cause states the cause. */
+.hp-nothing { color: var(--faint); font-size: var(--t-body); padding: 4px 0; }
+/* A condition that needs an operator is a line of text with a state dot, not a
+   tinted card with a thick coloured edge. The dot is the same signal the
+   masthead uses, so one convention carries state everywhere: a hairline below
+   separates the notice from the content it interrupts, and nothing is boxed.
+   (The card form also happens to be the single most recognisable tell of
+   generated UI — but the reason to drop it is that this console builds every
+   other group from hairlines and space.) */
+.hp-note {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--t-body);
+}
+.hp-note::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 6px; height: 6px; margin-top: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 3px rgba(247, 185, 85, .12);
+}
+.hp-note strong { color: var(--text); font-weight: 600; }
+.hp-note.is-bad::before { background: var(--bad); box-shadow: 0 0 0 3px rgba(255, 107, 125, .12); }
+
+/* ── one authored moment ───────────────────────────────────────────────
+   The panel's content fades in once, from an already-visible layout. */
+@keyframes hp-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.hp-enter { animation: hp-enter var(--enter) var(--ease) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hp-enter { animation: none; }
+  .hermes-panel * { animation: none !important; transition: none !important; }
+}
+
+/* ── the host frame ────────────────────────────────────────────────────
+   Every panel fills the central view exactly, with no chrome of its own. The
+   host sets display:flex on .main-view, which outranks the UA's
+   [hidden]{display:none} — so the collapse has to be spelled out or a hidden
+   panel keeps its box and the next one stacks below it. */
+.hermes-panel {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+.hermes-panel[hidden] { display: none !important; }
+main > .main-view[hidden] { display: none !important; }
+
+.hermes-panel > .hp-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: var(--bg);
+  color-scheme: dark;
+}
+
+.hermes-panel > .hp-error {
+  margin: auto;
+  max-width: 44ch;
+  padding: 14px 16px;
+  border: 1px solid var(--bad);
+  border-radius: var(--radius-input);
+  color: var(--bad);
+  font-size: var(--t-body);
+  text-align: center;
+}
