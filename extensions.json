@@ -1,14 +1,14 @@
 {
   "extensions": [
     {
-      "id": "hermes-panel",
-      "name": "Hermes Panel System",
+      "id": "hermes-one-extension-kit",
+      "name": "Hermes One Extension Kit",
       "scripts": [
-        "hermes-panel/hermes-theme-bridge.js",
-        "hermes-panel/hermes-panel-nav.js"
+        "hermes-one-extension-kit/hermes-theme-bridge.js",
+        "hermes-one-extension-kit/hermes-panel-nav.js"
       ],
       "stylesheets": [
-        "hermes-panel/hermes-panel.css"
+        "hermes-one-extension-kit/hermes-panel.css"
       ]
     },
     {

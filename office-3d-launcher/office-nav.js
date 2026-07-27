@@ -24,7 +24,7 @@
   // location.pathname === '/office/' and paints its canvas.
   //
   // Navigation and visibility come from the shared HermesPanelNav; see
-  // hermes-panel/hermes-panel-nav.js for what that fixes and why.
+  // hermes-one-extension-kit/hermes-panel-nav.js for what that fixes and why.
   const OFFICE_PATH = '/office/';
   const PANEL_ID = 'office-3d-panel';
   const ICON = '<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/>'
@@ -84,8 +84,8 @@
   }
 
   if (!window.HermesPanelNav) {
-    console.error('[office-3d-launcher] hermes-panel extension did not load; the '
-      + 'Office button cannot be installed. Check that "hermes-panel" is listed '
+    console.error('[office-3d-launcher] Hermes One Extension Kit did not load; the '
+      + 'Office button cannot be installed. Check that "hermes-one-extension-kit" is listed '
       + 'BEFORE "office-3d-launcher" in extensions.json.');
     return;
   }

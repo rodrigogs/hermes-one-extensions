@@ -31,10 +31,10 @@ and sidecar health together.
 
 ## Development
 
-The shared shell tests resolve files relative to the `hermes-panel` directory:
+The shared shell tests resolve files relative to the `hermes-one-extension-kit` directory:
 
 ```bash
-cd hermes-panel
+cd hermes-one-extension-kit
 node --test tests/*.js
 node --check hermes-panel-nav.js
 node --check hermes-theme-bridge.js
