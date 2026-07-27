@@ -3,7 +3,10 @@
     {
       "id": "hermes-panel",
       "name": "Hermes Panel System",
-      "scripts": [],
+      "scripts": [
+        "hermes-panel/hermes-theme-bridge.js",
+        "hermes-panel/hermes-panel-nav.js"
+      ],
       "stylesheets": [
         "hermes-panel/hermes-panel.css"
       ]

@@ -5,8 +5,8 @@
    * THESIS: The office is one of three panels in one shell, not a separate app.
    * OWN-WORLD: The host's rail and central view; the 3D city is the artefact and
    *   leads, while the chrome around it obeys the shared panel system.
-   * STORY: An operator clicks Office, the city opens where Sessions and Memory
-   *   open, and clicking away and back does not reload the scene.
+   * STORY: An operator taps Office, the city opens where Sessions and Memory
+   *   open, and tapping away and back does not reload the scene.
    * FIRST VIEWPORT: The city. This file adds no chrome above it.
    * FORM: Hermes One rail/sidebar extension mounting an iframe in .main-view.
    */
@@ -22,9 +22,14 @@
   // both allowed and better — it keeps its own URL, so its router and asset
   // paths resolve normally. Verified live: the frame loads, reports
   // location.pathname === '/office/' and paints its canvas.
+  //
+  // Navigation and visibility come from the shared HermesPanelNav; see
+  // hermes-panel/hermes-panel-nav.js for what that fixes and why.
   const OFFICE_PATH = '/office/';
   const PANEL_ID = 'office-3d-panel';
-  const icon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 10h1"/><path d="M14 10h1"/><path d="M9 14h1"/><path d="M14 14h1"/><path d="M10 21v-3h4v3"/></svg>';
+  const ICON = '<path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/>'
+    + '<path d="M9 10h1"/><path d="M14 10h1"/><path d="M9 14h1"/><path d="M14 14h1"/>'
+    + '<path d="M10 21v-3h4v3"/>';
 
   function el(tag, cls, text) {
     const node = document.createElement(tag);
@@ -33,12 +38,13 @@
     return node;
   }
 
+  let nav = null;
+
   function ensurePanel() {
     let panel = document.getElementById(PANEL_ID);
     if (panel) return panel;
     panel = el('section', 'main-view hermes-panel office-3d-panel');
     panel.id = PANEL_ID;
-    panel.hidden = true;
     const frame = el('iframe', 'hp-frame');
     frame.title = 'Office 3D';
     frame.dataset.officeFrame = 'true';
@@ -46,6 +52,7 @@
     frame.setAttribute('allow', 'fullscreen');
     panel.append(frame);
     document.querySelector('main')?.append(panel);
+    if (nav) nav.adopt(panel);
     return panel;
   }
 
@@ -70,59 +77,25 @@
     panel.append(message);
   }
 
-  function showPanel() {
-    document.querySelectorAll('main > .main-view').forEach((view) => {
-      view.hidden = view.id !== PANEL_ID;
-    });
-  }
-
   function onOpen() {
     const panel = ensurePanel();
-    showPanel();
+    if (nav) nav.show();
     load(panel);
   }
 
-  function installRailButton() {
-    const rail = document.querySelector('.rail');
-    if (!rail) return false;
-    if (rail.querySelector('[data-office-3d-launcher]')) return true;
-    const button = el('button', 'rail-btn nav-tab has-tooltip office-3d-nav');
-    button.type = 'button';
-    button.setAttribute('data-office-3d-launcher', 'true');
-    button.dataset.tooltip = 'Office 3D';
-    button.setAttribute('aria-label', 'Office 3D');
-    button.innerHTML = icon; // Trusted static icon only.
-    button.addEventListener('click', onOpen);
-    rail.insertBefore(button, rail.querySelector('.rail-spacer') || null);
-    return true;
+  if (!window.HermesPanelNav) {
+    console.error('[office-3d-launcher] hermes-panel extension did not load; the '
+      + 'Office button cannot be installed. Check that "hermes-panel" is listed '
+      + 'BEFORE "office-3d-launcher" in extensions.json.');
+    return;
   }
 
-  function installSidebarButton() {
-    const nav = document.querySelector('.sidebar-nav');
-    if (!nav) return false;
-    if (nav.querySelector('[data-office-3d-launcher]')) return true;
-    const button = el('button', 'nav-tab has-tooltip has-tooltip--bottom office-3d-nav');
-    button.type = 'button';
-    button.setAttribute('data-office-3d-launcher', 'true');
-    button.dataset.label = 'Office';
-    button.dataset.tooltip = 'Office 3D';
-    button.setAttribute('aria-label', 'Office 3D');
-    button.innerHTML = `${icon}<span class="office-3d-nav-label">Office</span>`; // Trusted static markup.
-    button.addEventListener('click', onOpen);
-    const kanban = nav.querySelector('[data-panel="kanban"]');
-    if (kanban?.nextSibling) nav.insertBefore(button, kanban.nextSibling);
-    else nav.append(button);
-    return true;
-  }
-
-  function bootstrap() {
-    if (installRailButton() && installSidebarButton()) return;
-    const observer = new MutationObserver(() => {
-      if (installRailButton() && installSidebarButton()) observer.disconnect();
-    });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
-  else bootstrap();
+  nav = window.HermesPanelNav.register({
+    token: 'office',
+    label: 'Office',
+    title: 'Office 3D',
+    iconPath: ICON,
+    navClass: 'office-3d-nav',
+    onOpen,
+  });
 })();

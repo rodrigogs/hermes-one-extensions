@@ -6,8 +6,9 @@
    *   can actually write.
    * OWN-WORLD: The host's rail and main-view; the console owns its own world once
    *   mounted. This file contributes navigation and a frame, nothing visual.
-   * STORY: An operator clicks Router in the rail, the console opens in the same
-   *   panel that holds Sessions and Memory, and editing works there.
+   * STORY: An operator taps Router — in the rail on a desktop, in the drawer on a
+   *   phone — the console opens in the same panel that holds Sessions and Memory,
+   *   the drawer closes behind it, and editing works there.
    * FIRST VIEWPORT: The console's own — this file adds no chrome above it.
    * FORM: Existing Hermes One rail/sidebar extension, not a new application route.
    */
@@ -24,11 +25,19 @@
   // reaches the consented sidecar proxy with cookies, and borrows the host's
   // token via window.parent. Verified end to end: POST /plan answers 200 from
   // inside this frame and 403 from a standalone tab.
+  //
+  // Navigation and visibility come from HermesPanelNav (the shared hermes-panel
+  // extension), because doing it here meant doing it three times, three slightly
+  // different ways. It implements the pattern the host documents for extensions
+  // (hermes-webui/docs/EXTENSIONS.md:551-580): toggle `hidden` across
+  // main > .main-view, and drive the host's own switchPanel rather than writing its
+  // classes off behind its back. See that module for what each rule fixes.
   const EXT_ID = 'capability-router';
   const SIDE = `/api/extensions/${EXT_ID}/sidecar`;
   const PANEL_ID = 'capability-router-panel';
-  const icon =
-    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="12" r="3"/><path d="M9 6h4a2 2 0 0 1 2 2v1"/><path d="M9 18h4a2 2 0 0 0 2-2v-1"/></svg>';
+  const ICON = '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>'
+    + '<circle cx="18" cy="12" r="3"/><path d="M9 6h4a2 2 0 0 1 2 2v1"/>'
+    + '<path d="M9 18h4a2 2 0 0 0 2-2v-1"/>';
 
   function el(tag, cls, text) {
     const node = document.createElement(tag);
@@ -37,12 +46,13 @@
     return node;
   }
 
+  let nav = null;
+
   function ensurePanel() {
     let panel = document.getElementById(PANEL_ID);
     if (panel) return panel;
     panel = el('section', 'main-view hermes-panel capability-router-panel');
     panel.id = PANEL_ID;
-    panel.hidden = true;
     // srcdoc, not src: the sidecar sends X-Frame-Options DENY and
     // frame-ancestors 'none', so the served page cannot be framed by URL. srcdoc
     // inherits this document's origin, which is the whole point — it is what lets
@@ -52,6 +62,7 @@
     frame.dataset.consoleFrame = 'true';
     panel.append(frame);
     document.querySelector('main')?.append(panel);
+    if (nav) nav.adopt(panel);
     return panel;
   }
 
@@ -92,49 +103,31 @@
         : `Could not reach the router sidecar (HTTP ${code}).`;
   }
 
-  function showPanel() {
-    document.querySelectorAll('main > .main-view').forEach((view) => { view.hidden = view.id !== PANEL_ID; });
-  }
-
   function onOpen() {
     const panel = ensurePanel();
-    showPanel();
+    // The panel is created after register(), so the first open is what tags it;
+    // show() then finds it by token. Re-showing is idempotent.
+    if (nav) nav.show();
     load(panel);
   }
 
-  function installRailButton() {
-    const rail = document.querySelector('.rail');
-    if (!rail) return false;
-    if (rail.querySelector('[data-capability-router]')) return true;
-    const button = el('button', 'rail-btn nav-tab has-tooltip capability-router-nav');
-    button.type = 'button'; button.dataset.capabilityRouter = 'true'; button.dataset.tooltip = 'Capability Router';
-    button.setAttribute('aria-label', 'Capability Router');
-    button.innerHTML = icon; // Trusted static icon only.
-    button.addEventListener('click', onOpen);
-    rail.insertBefore(button, rail.querySelector('.rail-spacer') || null);
-    return true;
+  // A missing shared module must say so. Without this the next line throws
+  // "Cannot read properties of undefined", the script dies before installing
+  // anything, and the symptom is a button that simply is not there — which is
+  // exactly how the office launcher failed silently once already.
+  if (!window.HermesPanelNav) {
+    console.error('[capability-router] hermes-panel extension did not load; '
+      + 'the Router button cannot be installed. Check that "hermes-panel" is '
+      + 'listed BEFORE "capability-router" in extensions.json.');
+    return;
   }
 
-  function installSidebarButton() {
-    const nav = document.querySelector('.sidebar-nav');
-    if (!nav) return false;
-    if (nav.querySelector('[data-capability-router]')) return true;
-    const button = el('button', 'nav-tab has-tooltip has-tooltip--bottom capability-router-nav');
-    button.type = 'button'; button.dataset.capabilityRouter = 'true'; button.dataset.label = 'Router'; button.dataset.tooltip = 'Capability Router';
-    button.setAttribute('aria-label', 'Capability Router');
-    button.innerHTML = `${icon}<span class="capability-router-nav-label">Router</span>`; // Trusted static markup only.
-    button.addEventListener('click', onOpen);
-    const kanban = nav.querySelector('[data-panel="kanban"]');
-    if (kanban?.nextSibling) nav.insertBefore(button, kanban.nextSibling); else nav.append(button);
-    return true;
-  }
-
-  function bootstrap() {
-    if (installRailButton() && installSidebarButton()) return;
-    const observer = new MutationObserver(() => { if (installRailButton() && installSidebarButton()) observer.disconnect(); });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
-  else bootstrap();
+  nav = window.HermesPanelNav.register({
+    token: 'router',
+    label: 'Router',
+    title: 'Capability Router',
+    iconPath: ICON,
+    navClass: 'capability-router-nav',
+    onOpen,
+  });
 })();

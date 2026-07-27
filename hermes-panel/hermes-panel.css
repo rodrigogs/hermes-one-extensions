@@ -5,66 +5,213 @@
  * learn three interfaces for one agent. This file is the single source of those
  * tokens; see DESIGN.md for the reasoning behind each rule.
  *
- * Loaded by the host page as an extension stylesheet, and inlined into the
- * srcdoc consoles (they are separate documents and cannot inherit it).
+ * Loaded by the host page as an extension stylesheet, inlined into the srcdoc
+ * consoles (they are separate documents and cannot inherit it), and imported by
+ * the office app as office-panel-tokens.css. Those two files are the SAME BODY
+ * and differ in exactly one place: the office runs as its own document inside the
+ * panel frame, where there is no host theme to collide with and body/#root need
+ * the tokens, so its first selector is `:root, .hermes-panel` instead of
+ * `.hermes-panel`. A test pins that, because drift here means the office and the
+ * consoles disagree silently.
+ *
+ * ── EVERY COLOUR HERE COMES FROM THE SHELL ────────────────────────────────
+ * Nothing below is a palette. Each token reads a --host-* property that
+ * hermes-theme-bridge.js forwards from the running shell's resolved theme, and
+ * the hex after the comma is a FALLBACK — what a panel looks like when the shell
+ * cannot be read at all (bridge missing, frame not yet adopted, a future host
+ * that stops declaring a token). Those fallbacks are the panel system's previous
+ * hard-coded values, so the worst case is the design we already shipped rather
+ * than an unstyled page.
+ *
+ * The reason is measured, not stylistic: the host has 21 skins x light/dark.
+ * default/dark is navy #0D0D1A on warm cream #FFF8DC with a GOLD #FFD700 accent;
+ * default/light is parchment #FEFCF7 on ink #1A1610; catppuccin/light is #EFF1F5
+ * with a PURPLE #8839EF; geist-contrast/dark is pure #000000 with #FFF175 and its
+ * own Geist font stack. A copied palette is wrong in 20 skins out of 21, and in
+ * any light skin these panels were a black rectangle inside a parchment shell.
  */
 
 /* Scoped to .hermes-panel ONLY, never :root.
  *
- * The host has its own theme — measured live, it sets --bg: #0D0D1A and
- * --text: #FFF8DC on :root. Declaring these at :root meant whichever stylesheet
- * loaded last won, so the panels' colours depended on extension load order and
- * the host's own chrome could be repainted by an extension. Scoping keeps the
- * panel system inside the panels and leaves the shell's theme alone. */
+ * The host declares --bg: #0D0D1A and --text: #FFF8DC on its own :root. Declaring
+ * the same names at :root here meant whichever stylesheet loaded last won, so the
+ * panels' colours depended on extension load order and the host's chrome could be
+ * repainted by an extension. Scoping keeps the panel system inside the panels; the
+ * --host-* namespace it reads from keeps the traffic one-way. */
 .hermes-panel {
-  /* Surfaces: near-black, because these are read in a dark IDE-adjacent shell. */
-  --bg: #0a0a0c;
-  --surface: #101013;
-  --surface-raised: #15151a;
-  --surface-hover: #1c1c23;
-  --line: #212127;
-  --line-strong: #33333d;
+  /* Planes, in the host's own lightness order.
+     --surface-raised and --surface-hover have no single host token, but the host
+     does ship the two WASHES it uses for exactly this: --surface-subtle and
+     --hover-bg. Both are authored per skin and per polarity — measured
+     rgba(255,255,255,.025) in default/dark, rgba(0,0,0,.025) in default/light — so
+     as translucent backgrounds they lift a plane in a dark skin and settle it in a
+     light one automatically, over whatever plane they sit on.
+     This replaces a color-mix toward --host-text, which was MEASURED WRONG: in
+     catppuccin/light (bg #EFF1F5, surface #FFFFFF) mixing surface toward the text
+     colour moved it back TOWARD the background, so a raised plane read as
+     recessed. Separation over --bg, measured across all 21 skins x both
+     polarities: subtle 1.02-1.13, hover 1.04-1.14, and hover >= subtle in 20 of
+     21 (equal in geist-contrast, which declares both opaque). */
+  --bg: var(--host-bg, #0a0a0c);
+  --surface: var(--host-surface, #101013);
+  --surface-raised: var(--host-surface-subtle, #15151a);
+  --surface-hover: var(--host-hover-bg, #1c1c23);
+  --line: var(--host-border, #212127);
+  --line-strong: var(--host-border2, #33333d);
 
-  /* Text. Measured against --bg: 15.8:1, 6.1:1, 3.6:1 — the last is used only
-     for non-essential labels, never for prose. */
-  --text: #f3f3f6;
-  --muted: #9a9aa8;
-  --faint: #61616e;
+  /* Text. The host ships exactly TWO steps, --text and --muted (measured
+     #FFF8DC / #C0C0C0 in default/dark, #1A1610 / #5C5344 in default/light), and
+     --faint keeps its name because three surfaces already use it — but it is now
+     the same colour as --muted, deliberately.
+     Measured, across all 21 skins x both polarities: --muted against --bg bottoms
+     out at 3.47:1 (terracotta/light). Deriving a third, fainter step from it —
+     color-mix toward --bg — measured 2.31:1 at 72% and still only 3.07:1 at 92%.
+     --faint's real uses are 11px labels and short sentences, which are not "large
+     text" and so want 4.5:1; a third step cannot reach that when the second one
+     does not. So the panel system does not invent contrast the shell does not
+     have: it never renders text below the host's own floor, and the step below
+     --muted is expressed in TYPE — 11px, uppercase, tracked — exactly as the
+     host's UI guide specifies for metadata. */
+  --text: var(--host-text, #f3f3f6);
+  --muted: var(--host-muted, #9a9aa8);
+  --faint: var(--host-muted, #61616e);
 
-  /* Emphasis is contrast, not hue: a brand colour here would compete with the
-     state colours below and make both mean less. */
-  --accent: #f3f3f6;
-  --accent-strong: #ffffff;
+  /* Emphasis. This used to be paper white on purpose — "contrast, not hue" — but
+     that reasoning belonged to a panel with a palette of its own. Inside Hermes One
+     the accent IS the skin's identity, and the host uses exactly one at a time, so
+     the panels now borrow it. Two tokens because the host tunes two: --accent for
+     fills and edges, --accent-text for accent-coloured WORDS (default/light ships
+     #B8860B and #8B6508 — the darker one so type on parchment still reads). */
+  --accent: var(--host-accent, #f3f3f6);
+  --accent-strong: var(--host-accent-hover, #ffffff);
+  --accent-text: var(--host-accent-text, var(--host-accent, #f3f3f6));
+  --accent-bg: var(--host-accent-bg, transparent);
+  --accent-bg-strong: var(--host-accent-bg-strong, transparent);
+  /* Foreground for something PAINTED accent. The host's own rule is
+     color: var(--panel-head-primary-fg, #fff) — dark skins set it to their
+     background, light skins leave it unset and take white. Borrowed whole,
+     including that #fff, because the host's light skins depend on it. */
+  --accent-fg: var(--host-accent-fg, #fff);
 
-  /* State. These four are the ONLY meaningful colours, and they mean the same
-     thing on every surface. */
-  --ok: #4ade9b;
-  --warn: #f7b955;
-  --bad: #ff6b7d;
-  --info: #b490ff;
+  /* State. Ours are ok/warn/bad/info, the host's are success/warning/error/info;
+     the mapping lives here, once. These four are the only meaningful colours and
+     they mean the same thing on every surface. The host re-tunes them per polarity
+     (measured: #4CAF50 dark, #3D8B40 light) so they stay legible either way. */
+  --ok: var(--host-success, #4ade9b);
+  --warn: var(--host-warning, #f7b955);
+  --bad: var(--host-error, #ff6b7d);
+  --info: var(--host-info, #b490ff);
+  /* The wash behind a state dot, and state-coloured type. Both are derived below;
+     these are the pre-color-mix values, and `transparent` is the honest one — no
+     wash beats a wash in the wrong polarity. */
+  --ok-bg: transparent;
+  --warn-bg: transparent;
+  --bad-bg: transparent;
+  --info-bg: transparent;
+  --bad-text: var(--host-error, #ff6b7d);
 
-  --mono: ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace;
-  --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Type. --font-mono is declared by only some skins (measured: set in
+     github/light, absent in eight others), which is exactly why the fallback is a
+     real stack and not a bare `monospace`. */
+  --mono: var(--host-font-mono, ui-monospace, "SFMono-Regular", "Cascadia Code", "Roboto Mono", Consolas, monospace);
+  --sans: var(--host-font-ui, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
 
-  /* Four steps, ~1.25 apart. Anything between them reads as an accident. */
-  --t-label: 10.5px;
-  --t-body: 13px;
+  /* Four steps, on the host's own ladder rather than a parallel one. The host
+     declares 11/12/14px and its .main-view-title measures 18px/600/-0.18px, so
+     11px metadata, 14px body and 18px heading are the shell's steps, not ours. The
+     old 10.5px and 20px were one-offs that read as an accident next to host
+     chrome; --t-value 16px has no host equivalent and sits between body and
+     heading for a metric that must be scannable without being a headline. */
+  --t-label: var(--host-font-size-xs, 11px);
+  --t-body: var(--host-font-size-md, 13px);
   --t-value: 16px;
-  --t-head: 20px;
+  --t-head: 18px;
 
-  --radius: 7px;
-  --radius-input: 9px;
-  --focus: 0 0 0 3px rgba(243, 243, 246, .22);
+  /* Shape, from the host's ladder: 4 / 8 / 12 / pill. */
+  --radius-sm: var(--host-radius-sm, 4px);
+  --radius: var(--host-radius-md, 7px);
+  --radius-input: var(--host-radius-md, 9px);
+  --radius-pill: var(--host-radius-pill, 999px);
+  --focus: 0 0 0 3px var(--host-focus-ring, rgba(243, 243, 246, .22));
 
   /* One authored moment, not scattered effects. */
   --ease: cubic-bezier(.16, 1, .3, 1);
   --enter: 160ms;
+
+  /* The shell's own colour polarity, so a native scrollbar, a form control and a
+     frame's canvas are right before any of our CSS paints. The host carries this
+     as a CLASS on <html>, never as a property, so the bridge resolves it. */
+  color-scheme: var(--host-color-scheme, dark);
 }
 
-/* ── the shared masthead ────────────────────────────────────────────────
-   Every panel opens with the same bar: wordmark, then the surface's own
-   controls, then live state. No breadcrumb (the host rail already says where
-   you are) and no decorative subtitle. */
+/* The two tokens that genuinely have no host equivalent, derived.
+ *
+ * These have to be a separate @supports block rather than the usual
+ * declare-twice fallback: a custom property accepts ANY token stream at parse
+ * time, so an engine without color-mix() would keep the color-mix declaration and
+ * only fail later, at computed-value time, leaving the panel unstyled instead of
+ * falling back. Verified color-mix(in srgb, ...) — including a var() operand and a
+ * `transparent` operand — resolves in the shell's engine.
+ *
+ * Only two things are derived, and both are derived from a STATE colour rather
+ * than from the neutral ramp, which is why they cannot invert: a wash of the state
+ * hue, and state-coloured type. Everything neutral now comes from a host token
+ * directly, because measuring showed the host's own washes beat anything mixed
+ * here (see --surface-raised above). */
+@supports (color: color-mix(in srgb, red 50%, blue)) {
+  .hermes-panel {
+    /* The wash behind a state dot: the same hue as the dot, at the weight the host
+       uses for its own accent washes (measured --accent-bg at 0.08-0.12 alpha).
+       Mixing with `transparent` keeps it a tint of whatever plane it lands on, so
+       there is no polarity to get wrong. */
+    --ok-bg: color-mix(in srgb, var(--host-success, #4ade9b) 14%, transparent);
+    --warn-bg: color-mix(in srgb, var(--host-warning, #f7b955) 14%, transparent);
+    --bad-bg: color-mix(in srgb, var(--host-error, #ff6b7d) 14%, transparent);
+    --info-bg: color-mix(in srgb, var(--host-info, #b490ff) 14%, transparent);
+    /* Danger type. --host-error is authored for a filled badge, and against --bg it
+       measures 4.01:1 at worst (terracotta/light) — under the 4.5:1 floor for body
+       text. Pulling it 22% toward --host-text raises the worst case to 5.16:1 and
+       keeps it red in every skin. Measured across all 21 skins x both polarities:
+       5.16 to 8.61. */
+    --bad-text: color-mix(in srgb, var(--host-error, #ff6b7d) 78%, var(--host-text, #f3f3f6));
+  }
+}
+
+/* ── the native header ──────────────────────────────────────────────────
+   A panel opens the way every host view opens. Measured from the running shell:
+   .main-view-header is padding 8px 32px with a 1px bottom border on --border, and
+   .main-view-title is 18px / 600 / letter-spacing -0.18px in the UI SANS — not
+   mono, and not a tracked uppercase wordmark. The host rail already says which
+   surface you are on, so the header carries the view's title and its actions and
+   nothing else. 44px minimum on a coarse pointer, below. */
+.hp-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 16px;
+  min-height: 41px;
+  padding: 8px clamp(14px, 2.4vw, 32px);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.hp-head-title {
+  font: 600 var(--t-head) / 1.3 var(--sans);
+  letter-spacing: -.18px;
+  color: var(--text);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.hp-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: end;
+}
+
+/* ── the legacy masthead ────────────────────────────────────────────────
+   Kept while the three surfaces migrate to .hp-head. Same tokens, so it changes
+   skin correctly in the meantime; the wordmark it carries is what .hp-head
+   replaces. */
 .hp-bar {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -121,15 +268,15 @@
   border-radius: 50%;
   background: var(--faint);
 }
-.hp-dot.is-ok   { background: var(--ok);   box-shadow: 0 0 0 3px rgba(74, 222, 155, .12); }
-.hp-dot.is-warn { background: var(--warn); box-shadow: 0 0 0 3px rgba(247, 185, 85, .12); }
-.hp-dot.is-bad  { background: var(--bad);  box-shadow: 0 0 0 3px rgba(255, 107, 125, .12); }
-.hp-dot.is-info { background: var(--info); box-shadow: 0 0 0 3px rgba(180, 144, 255, .12); }
+.hp-dot.is-ok   { background: var(--ok);   box-shadow: 0 0 0 3px var(--ok-bg); }
+.hp-dot.is-warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-bg); }
+.hp-dot.is-bad  { background: var(--bad);  box-shadow: 0 0 0 3px var(--bad-bg); }
+.hp-dot.is-info { background: var(--info); box-shadow: 0 0 0 3px var(--info-bg); }
 
 /* ── controls ──────────────────────────────────────────────────────────── */
 .hp-btn {
   border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 7px 14px;
   background: transparent;
   color: var(--muted);
@@ -138,10 +285,12 @@
 }
 .hp-btn:hover { border-color: var(--accent); color: var(--text); background: var(--surface-raised); }
 .hp-btn[disabled] { opacity: .55; cursor: default; }
-/* The committing action is the only inverted element on a screen. */
-.hp-btn.is-primary { border-color: var(--text); background: var(--text); color: var(--bg); }
-.hp-btn.is-primary:hover { background: var(--accent-strong); color: var(--bg); }
-.hp-btn.is-danger { border-color: rgba(255, 107, 125, .45); color: #ffc7ce; }
+/* The committing action is the only filled element on a screen, and it is filled
+   with the skin's accent — the same signal the host puts on its own primary
+   button, with the host's own foreground rule for legibility on it. */
+.hp-btn.is-primary { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); }
+.hp-btn.is-primary:hover { border-color: var(--accent-strong); background: var(--accent-strong); color: var(--accent-fg); }
+.hp-btn.is-danger { border-color: var(--bad); color: var(--bad-text); }
 
 .hp-quiet {
   border: 0; padding: 4px 0;
@@ -157,14 +306,14 @@
   padding: 8px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-input);
-  background: var(--surface);
+  background: var(--host-input-bg, var(--surface));
   color: var(--text);
   font: var(--t-body) var(--mono);
 }
 .hp-input::placeholder { color: var(--faint); }
-.hp-input:focus { border-color: var(--line-strong); }
+.hp-input:focus { border-color: var(--accent); }
 
-:where(.hermes-panel, .hp-bar) :focus-visible { outline: none; box-shadow: var(--focus); }
+:where(.hermes-panel, .hp-bar, .hp-head) :focus-visible { outline: none; box-shadow: var(--focus); }
 
 /* ── rows: the one structural primitive ────────────────────────────────
    A group is made by space, not by a box. No card nests. */
@@ -177,7 +326,7 @@
   border-bottom: 1px solid var(--line);
 }
 .hp-row:last-child { border-bottom: 0; }
-.hp-row-name { font: 500 13.5px var(--mono); overflow-wrap: anywhere; }
+.hp-row-name { font: 500 var(--t-body) var(--mono); overflow-wrap: anywhere; }
 .hp-row-note { color: var(--faint); font-size: var(--t-body); margin-top: 1px; }
 
 .hp-kicker {
@@ -215,10 +364,18 @@
   width: 6px; height: 6px; margin-top: 6px;
   border-radius: 50%;
   background: var(--warn);
-  box-shadow: 0 0 0 3px rgba(247, 185, 85, .12);
+  box-shadow: 0 0 0 3px var(--warn-bg);
 }
 .hp-note strong { color: var(--text); font-weight: 600; }
-.hp-note.is-bad::before { background: var(--bad); box-shadow: 0 0 0 3px rgba(255, 107, 125, .12); }
+/* A failure has to READ as a failure. Only the dot was switching hue, so the note's
+   own text stayed --muted — measured live with the office's sessions and crons forced
+   to 503, the banner announcing the failure computed a desaturated purple, the skin's
+   info/accent hue, while --bad resolved to #FF1744. The one element on screen saying
+   something broke was tinted like a note.
+   --bad-text, not --bad: the raw error hue bottoms out at 4.01:1 across the 21 skins,
+   which is why that token is pre-mixed 22% toward the text colour to clear 4.5:1. */
+.hp-note.is-bad { color: var(--bad-text); }
+.hp-note.is-bad::before { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-bg); }
 
 /* ── one authored moment ───────────────────────────────────────────────
    The panel's content fades in once, from an already-visible layout. */
@@ -230,11 +387,19 @@
   .hermes-panel * { animation: none !important; transition: none !important; }
 }
 
+/* A finger needs 44px, and an input under 16px triggers the iOS focus-zoom trap. */
+@media (hover: none) and (pointer: coarse) {
+  .hp-btn, .hp-quiet { min-height: 44px; }
+  .hp-head { min-height: 44px; }
+  .hp-input { font-size: max(16px, 1em); }
+}
+
 /* ── the host frame ────────────────────────────────────────────────────
    Every panel fills the central view exactly, with no chrome of its own. The
    host sets display:flex on .main-view, which outranks the UA's
-   [hidden]{display:none} — so the collapse has to be spelled out or a hidden
-   panel keeps its box and the next one stacks below it. */
+   [hidden]{display:none} — so the collapse has to be spelled out, which is what
+   the [hidden] rules below do and why the host's own doc tells extensions to add
+   them. Shown is therefore the default here; hiding is the explicit act. */
 .hermes-panel {
   position: relative;
   display: flex;
@@ -244,8 +409,34 @@
   background: var(--bg);
   color: var(--text);
 }
+/* Visibility, the way the host documents it for extensions.
+ *
+ * hermes-webui/docs/EXTENSIONS.md:551-580 prescribes exactly this: toggle
+ * `hidden` across `main > .main-view`, and — quoting the doc — "if host CSS
+ * overrides [hidden], add an extension-scoped rule such as
+ * .my-extension-panel[hidden] { display: none !important; }". The host does
+ * override it: `.main-view { display: flex }` at style.css:4905 outranks the UA's
+ * [hidden] { display: none }, which is why the !important below is not paranoia.
+ *
+ * An earlier version of this file drove the host's own `showing-<panel>` classes
+ * instead. That composed with the host's CSS but not with its state, and produced
+ * two measured defects: on desktop, tapping the tab you came from was swallowed by
+ * switchPanel's `prevPanel === nextPanel` branch; on mobile, opening the drawer
+ * replaced the panel with chat. Both are gone with the documented mechanism.
+ *
+ * Chat still needs suppressing, because it is the host's DEFAULT view rather than
+ * a tokened one: its rule is
+ *   main.main:not(.showing-settings)...:not(.showing-plugin) > #mainChat
+ * whose ten :not() pseudo-classes score (0,11,1), so an extension token leaves it
+ * matching and chat paints beside the panel, splitting the viewport. Repeating the
+ * attribute eleven times matches that weight and wins by one. !important would
+ * also win and would then also beat any future host rule that legitimately needs
+ * to hide chat — a heavier hammer aimed at more than the nail. */
 .hermes-panel[hidden] { display: none !important; }
 main > .main-view[hidden] { display: none !important; }
+main.main[class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"] > #mainChat {
+  display: none;
+}
 
 .hermes-panel > .hp-frame {
   flex: 1;
@@ -255,7 +446,9 @@ main > .main-view[hidden] { display: none !important; }
   border: 0;
   display: block;
   background: var(--bg);
-  color-scheme: dark;
+  /* Never hard-coded: `dark` here gave a light skin dark scrollbars and a black
+     flash before the framed document painted. */
+  color-scheme: var(--host-color-scheme, dark);
 }
 
 .hermes-panel > .hp-error {
@@ -264,7 +457,7 @@ main > .main-view[hidden] { display: none !important; }
   padding: 14px 16px;
   border: 1px solid var(--bad);
   border-radius: var(--radius-input);
-  color: var(--bad);
+  color: var(--bad-text);
   font-size: var(--t-body);
   text-align: center;
 }
