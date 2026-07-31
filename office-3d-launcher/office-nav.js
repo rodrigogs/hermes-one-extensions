@@ -82,40 +82,51 @@
   // own the drawer kept displaying the chat conversation list behind an open
   // Office. Header markup mirrors the host's other panels so it inherits their
   // styling rather than shipping a second look.
+  // The Office sidebar. Markup mirrors the host's own panel-views exactly — a
+  // bare <span> title, actions inside .panel-head-actions, .panel-head-btn with
+  // has-tooltip and an inline SVG — so it inherits Hermes One's styling instead
+  // of shipping a second look that drifts on every host restyle.
   function buildSidebar(view) {
     const head = el('div', 'panel-head');
-    const title = el('div', 'panel-head-title', 'OFFICE');
+    const title = document.createElement('span');
+    title.textContent = 'Office';
     head.append(title);
 
+    const actions = el('div', 'panel-head-actions');
     const reload = document.createElement('button');
     reload.type = 'button';
-    reload.className = 'panel-head-btn has-tooltip';
-    reload.dataset.tooltip = 'Reload the scene';
-    reload.setAttribute('aria-label', 'Reload the scene');
-    reload.textContent = '\u21bb';
+    reload.className = 'panel-head-btn has-tooltip has-tooltip--bottom-right';
+    reload.dataset.tooltip = 'Reload scene';
+    reload.setAttribute('aria-label', 'Reload scene');
+    reload.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>';
     reload.addEventListener('click', () => {
       const frame = document.querySelector('[data-office-frame]');
       if (!frame) return;
-      frame.dataset.loaded = 'false';
       frame.src = OFFICE_PATH;
       frame.dataset.loaded = 'true';
     });
-    head.append(reload);
+    actions.append(reload);
+
+    const popout = document.createElement('button');
+    popout.type = 'button';
+    popout.className = 'panel-head-btn has-tooltip has-tooltip--bottom-right';
+    popout.dataset.tooltip = 'Open in a new tab';
+    popout.setAttribute('aria-label', 'Open in a new tab');
+    popout.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+      + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+      + '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'
+      + '<polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
+    popout.addEventListener('click', () => window.open(OFFICE_PATH, '_blank', 'noopener'));
+    actions.append(popout);
+
+    head.append(actions);
     view.append(head);
 
-    const body = el('div', 'office-side-body');
     const hint = el('div', 'office-side-hint',
       'Drag to orbit \u00b7 scroll to zoom \u00b7 click a building to enter.');
-    body.append(hint);
-
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.className = 'office-side-action';
-    open.textContent = 'Open in a new tab';
-    open.addEventListener('click', () => window.open(OFFICE_PATH, '_blank', 'noopener'));
-    body.append(open);
-
-    view.append(body);
+    view.append(hint);
   }
 
   function onOpen() {

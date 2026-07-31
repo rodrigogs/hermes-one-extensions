@@ -4,34 +4,13 @@
 .sidebar-nav .office-3d-nav-label{display:inline}
 @media(max-width:900px){.sidebar-nav .office-3d-nav-label{display:none}}
 
-/* Office sidebar view. Uses the host's own tokens so it reads as one surface
-   with the chat/kanban panels rather than a bolted-on second style. */
-.sidebar .panel-view[data-panel-token="office"] .office-side-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-}
-
+/* Office sidebar. The head, buttons and tooltips are the host's own classes, so
+   they need no styling here — only the one element the host has no equivalent
+   for. Uses host tokens so it tracks theme changes. */
 .sidebar .panel-view[data-panel-token="office"] .office-side-hint {
+  padding: 12px 14px;
   font-size: 12px;
-  line-height: 1.5;
-  opacity: 0.7;
-}
-
-.sidebar .panel-view[data-panel-token="office"] .office-side-action {
-  appearance: none;
-  cursor: pointer;
-  text-align: left;
-  font: inherit;
-  font-size: 13px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.28));
-  background: var(--panel-bg, transparent);
-  color: inherit;
-}
-
-.sidebar .panel-view[data-panel-token="office"] .office-side-action:hover {
-  background: var(--hover-bg, rgba(127, 127, 127, 0.12));
+  line-height: 1.55;
+  color: var(--text-dim, var(--muted, currentColor));
+  opacity: 0.75;
 }
