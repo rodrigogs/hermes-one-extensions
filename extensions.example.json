@@ -38,13 +38,13 @@
       }
     },
     {
-      "id": "memory-graph",
-      "name": "Memory Graph",
+      "id": "hermes-one-fact-explorer",
+      "name": "Fact Explorer",
       "scripts": [
-        "memory-graph/memory-nav.js"
+        "hermes-one-fact-explorer/memory-nav.js"
       ],
       "stylesheets": [
-        "memory-graph/memory-nav.css"
+        "hermes-one-fact-explorer/memory-nav.css"
       ],
       "sidecar": {
         "type": "loopback",

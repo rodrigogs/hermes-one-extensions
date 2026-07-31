@@ -13,4 +13,4 @@ extensions.json
 # ignored: this directory is a deployment target for these files, not their home.
 hermes-one-capability-router/console.html
 hermes-one-capability-router/DESIGN.md
-memory-graph/console.html
+hermes-one-fact-explorer/console.html

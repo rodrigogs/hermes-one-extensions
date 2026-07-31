@@ -8,7 +8,8 @@ It adds integrated views to the Hermes One shell without forking the WebUI:
 - **Office 3D** — persistent iframe view for the local `/office/` scene;
 - **Capability Router** — operational view for the local model-routing sidecar:
   the capability ladder, the blocklist and breaker, and the recorded decisions;
-- **Memory Graph** — read-only view of the Holographic Memory fact store.
+- **Fact Explorer** — read-only view of the Holographic Memory fact store: the
+  fact list is the primary surface, with a derived graph as a second mode.
 
 ## Runtime contract
 
@@ -45,7 +46,7 @@ Validate every extension script after a change:
 
 ```bash
 node --check hermes-one-capability-router/router-nav.js
-node --check memory-graph/memory-nav.js
+node --check hermes-one-fact-explorer/memory-nav.js
 node --check hermes-one-office-3d/office-nav.js
 ```
 
