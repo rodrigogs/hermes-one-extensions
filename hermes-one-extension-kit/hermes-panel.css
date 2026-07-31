@@ -109,6 +109,7 @@
   --bad-bg: transparent;
   --info-bg: transparent;
   --bad-text: var(--host-error, #ff6b7d);
+  --warn-text: var(--host-warning, #f7b955);
 
   /* Type. --font-mono is declared by only some skins (measured: set in
      github/light, absent in eight others), which is exactly why the fallback is a
@@ -174,6 +175,11 @@
        keeps it red in every skin. Measured across all 21 skins x both polarities:
        5.16 to 8.61. */
     --bad-text: color-mix(in srgb, var(--host-error, #ff6b7d) 78%, var(--host-text, #f3f3f6));
+    /* Same story as --bad-text, same fix: --host-warning is authored as a badge
+       fill. Amber type on a light parchment shell is the worst case in this set,
+       so it is pulled the same 22% toward --host-text to clear the 4.5:1 floor
+       while staying unmistakably amber. */
+    --warn-text: color-mix(in srgb, var(--host-warning, #f7b955) 78%, var(--host-text, #f3f3f6));
   }
 }
 
