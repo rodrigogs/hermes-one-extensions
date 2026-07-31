@@ -5,3 +5,12 @@ node_modules/
 # Local deployment manifest: which extensions this install enables.
 # extensions.example.json is the tracked full set.
 extensions.json
+
+# Deployed by install_hermes_one_router.py from the plugin repo's
+# webui_extension/<id>/, which is the source of truth for them. The console is a
+# 121KB single-file build and DESIGN.md documents it; both are tracked THERE, and a
+# second copy here would be the one that drifts. Same reason extensions.json is
+# ignored: this directory is a deployment target for these files, not their home.
+hermes-one-capability-router/console.html
+hermes-one-capability-router/DESIGN.md
+memory-graph/console.html
