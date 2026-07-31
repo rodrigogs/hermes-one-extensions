@@ -128,6 +128,24 @@
     document.querySelectorAll('[data-panel]').forEach((tab) => {
       tab.classList.toggle('active', tab.dataset.panel === `x-${token}`);
     });
+
+    // The sidebar is a stack of .panel-view siblings; the host shows exactly one
+    // by class. Extensions that register a sidebarView get the same treatment, so
+    // the drawer stops showing the chat conversation list behind an open Office.
+    // Extensions without one fall through to no sidebar view at all, which is
+    // still correct: better an empty rail than a stale list from another panel.
+    document.querySelectorAll('.sidebar .panel-view').forEach((view) => {
+      view.classList.toggle('active', view.dataset.panelToken === token);
+    });
+
+    // aria-expanded on the rail mirrors "this panel owns the sidebar". The host
+    // syncs it via _syncSidebarAria for its own tabs; ours are invisible to that
+    // pass, so a stale true would stay on Chat while Office is open.
+    document.querySelectorAll('.rail [data-panel], .sidebar-nav [data-panel]').forEach((tab) => {
+      if (tab.hasAttribute('aria-expanded')) {
+        tab.setAttribute('aria-expanded', String(tab.dataset.panel === `x-${token}`));
+      }
+    });
   }
 
   // What the host believes it is showing. Read-only: the value is a private `let`
@@ -174,6 +192,29 @@
     });
     document.querySelectorAll('[data-panel^="x-"]').forEach((tab) => {
       tab.classList.remove('active');
+    });
+    document.querySelectorAll('.sidebar .panel-view[data-panel-token]').forEach((view) => {
+      view.classList.remove('active');
+    });
+    // Reinstate the host's sidebar view. show() cleared every .panel-view so ours
+    // could be the only active one; the host only re-activates its own inside
+    // switchPanel, and release() can be reached without one (a rail click on the
+    // panel that is already current). Read the token the host still believes is
+    // current and restore that view by its id convention: panel<Token>.
+    const token = hostPanel();
+    if (token) {
+      const id = 'panel' + token.charAt(0).toUpperCase() + token.slice(1);
+      const hostView = document.getElementById(id);
+      if (hostView) hostView.classList.add('active');
+      document.querySelectorAll(`[data-panel="${token}"]`).forEach((tab) => {
+        tab.classList.add('active');
+        if (tab.hasAttribute('aria-expanded')) tab.setAttribute('aria-expanded', 'true');
+      });
+    }
+    // Hand aria-expanded back: the host's own _syncSidebarAria runs on its next
+    // switchPanel and will set the truthful value for whichever tab it activated.
+    document.querySelectorAll('.rail [data-panel^="x-"], .sidebar-nav [data-panel^="x-"]').forEach((tab) => {
+      if (tab.hasAttribute('aria-expanded')) tab.setAttribute('aria-expanded', 'false');
     });
   }
 
@@ -229,6 +270,26 @@
       return button;
     };
 
+    // A sidebar view is optional. When an extension supplies one, mount it as a
+    // sibling .panel-view so the host's own show-exactly-one convention applies to
+    // it, tagged with our token so show()/release() can find it.
+    const installSidebarView = () => {
+      if (typeof spec.sidebarView !== 'function') return;
+      const sidebar = document.querySelector('.sidebar');
+      if (!sidebar) return;
+      if (sidebar.querySelector(`.panel-view[data-panel-token="${spec.token}"]`)) return;
+      const view = document.createElement('div');
+      view.className = 'panel-view';
+      view.dataset.panelToken = spec.token;
+      try { spec.sidebarView(view); } catch (error) {
+        console.error(`[${spec.token}] sidebarView failed`, error);
+        return;
+      }
+      const handle = sidebar.querySelector('.resize-handle');
+      if (handle) sidebar.insertBefore(view, handle);
+      else sidebar.append(view);
+    };
+
     const anchor = spec.after || 'kanban';
 
     const installRail = () => {
@@ -264,10 +325,12 @@
       // opened fine and then never stood down for a host tab, which is the exact
       // bug this module exists to fix, reintroduced by ordering.
       const installed = installRail() && installSidebar();
+      installSidebarView();
       watchHost();
       if (installed) return;
       const observer = new MutationObserver(() => {
         if (installRail() && installSidebar()) {
+          installSidebarView();
           watchHost();
           observer.disconnect();
         }

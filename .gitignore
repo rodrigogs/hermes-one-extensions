@@ -1,3 +1,7 @@
 *.bak-*
 *.superseded
 node_modules/
+
+# Local deployment manifest: which extensions this install enables.
+# extensions.example.json is the tracked full set.
+extensions.json

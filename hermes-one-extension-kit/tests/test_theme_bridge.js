@@ -56,7 +56,7 @@ const panelCssPath = PANEL_CSS_CANDIDATES.find((p) => fs.existsSync(p)) || PANEL
 const OFFICE_CANDIDATES = [
   path.join(HERE, '..', 'office-panel-tokens.css'),                    // deployed: tests/ -> extension dir
   path.join(HERE, 'office-panel-tokens.css'),                          // the source checkout
-  '/home/rodrigo/hermes-office-web/src/office-panel-tokens.css',       // the deploy target
+  process.env.OFFICE_TOKENS_CSS || 'src/office-panel-tokens.css',       // the deploy target
 ];
 const officeCssPath = OFFICE_CANDIDATES.find((p) => fs.existsSync(p)) || null;
 

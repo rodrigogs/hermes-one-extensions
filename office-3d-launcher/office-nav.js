@@ -77,6 +77,47 @@
     panel.append(message);
   }
 
+
+  // The Office sidebar. The host shows exactly one .panel-view; without one of our
+  // own the drawer kept displaying the chat conversation list behind an open
+  // Office. Header markup mirrors the host's other panels so it inherits their
+  // styling rather than shipping a second look.
+  function buildSidebar(view) {
+    const head = el('div', 'panel-head');
+    const title = el('div', 'panel-head-title', 'OFFICE');
+    head.append(title);
+
+    const reload = document.createElement('button');
+    reload.type = 'button';
+    reload.className = 'panel-head-btn has-tooltip';
+    reload.dataset.tooltip = 'Reload the scene';
+    reload.setAttribute('aria-label', 'Reload the scene');
+    reload.textContent = '\u21bb';
+    reload.addEventListener('click', () => {
+      const frame = document.querySelector('[data-office-frame]');
+      if (!frame) return;
+      frame.dataset.loaded = 'false';
+      frame.src = OFFICE_PATH;
+      frame.dataset.loaded = 'true';
+    });
+    head.append(reload);
+    view.append(head);
+
+    const body = el('div', 'office-side-body');
+    const hint = el('div', 'office-side-hint',
+      'Drag to orbit \u00b7 scroll to zoom \u00b7 click a building to enter.');
+    body.append(hint);
+
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'office-side-action';
+    open.textContent = 'Open in a new tab';
+    open.addEventListener('click', () => window.open(OFFICE_PATH, '_blank', 'noopener'));
+    body.append(open);
+
+    view.append(body);
+  }
+
   function onOpen() {
     const panel = ensurePanel();
     if (nav) nav.show();
@@ -97,5 +138,6 @@
     iconPath: ICON,
     navClass: 'office-3d-nav',
     onOpen,
+    sidebarView: buildSidebar,
   });
 })();
