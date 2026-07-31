@@ -64,6 +64,10 @@
     const frame = panel.querySelector('[data-office-frame]');
     if (!frame || frame.dataset.loaded === 'true') return;
     frame.addEventListener('error', () => showError(panel), { once: true });
+    // onOpen's sync runs before this document exists, so the first collapse state
+    // would be missed on a cold open — and it also has to re-apply after a
+    // reload, which throws the class away with the old document.
+    frame.addEventListener('load', syncCollapsed);
     frame.src = OFFICE_PATH;
     frame.dataset.loaded = 'true';
   }
@@ -78,61 +82,77 @@
   }
 
 
-  // The Office sidebar. The host shows exactly one .panel-view; without one of our
-  // own the drawer kept displaying the chat conversation list behind an open
-  // Office. Header markup mirrors the host's other panels so it inherits their
-  // styling rather than shipping a second look.
-  // The Office sidebar. Markup mirrors the host's own panel-views exactly — a
-  // bare <span> title, actions inside .panel-head-actions, .panel-head-btn with
-  // has-tooltip and an inline SVG — so it inherits Hermes One's styling instead
-  // of shipping a second look that drifts on every host restyle.
+  // The Office sidebar view.
+  //
+  // The host shows exactly one .panel-view; without one of our own the drawer
+  // kept displaying the chat conversation list behind an open Office. Above
+  // 641px this view is not what the operator sees in that column — the panel's
+  // own roster fills the track and this sidebar is collapsed (see office-nav.css)
+  // — so all this holds is the title the host expects and the camera hint, which
+  // is what the drawer shows at the widths where the roster is a sheet instead.
   function buildSidebar(view) {
     const head = el('div', 'panel-head');
     const title = document.createElement('span');
     title.textContent = 'Office';
     head.append(title);
 
-    const actions = el('div', 'panel-head-actions');
-    const reload = document.createElement('button');
-    reload.type = 'button';
-    reload.className = 'panel-head-btn has-tooltip has-tooltip--bottom-right';
-    reload.dataset.tooltip = 'Reload scene';
-    reload.setAttribute('aria-label', 'Reload scene');
-    reload.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
-      + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-      + '<path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>';
-    reload.addEventListener('click', () => {
-      const frame = document.querySelector('[data-office-frame]');
-      if (!frame) return;
-      frame.src = OFFICE_PATH;
-      frame.dataset.loaded = 'true';
-    });
-    actions.append(reload);
-
-    const popout = document.createElement('button');
-    popout.type = 'button';
-    popout.className = 'panel-head-btn has-tooltip has-tooltip--bottom-right';
-    popout.dataset.tooltip = 'Open in a new tab';
-    popout.setAttribute('aria-label', 'Open in a new tab');
-    popout.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"'
-      + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-      + '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'
-      + '<polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
-    popout.addEventListener('click', () => window.open(OFFICE_PATH, '_blank', 'noopener'));
-    actions.append(popout);
-
-    head.append(actions);
+    /* No actions here. Reload-scene and pop-out used to live in this head; above
+       641px this whole view now sits inside a collapsed column, so they were
+       unreachable, and below it the drawer has to be pulled open to reach them.
+       They moved into the panel's own header, which is visible at every width.
+       Duplicating them in both places would have meant two controls for one
+       action, one of them usually invisible. */
     view.append(head);
 
     const hint = el('div', 'office-side-hint',
-      'Drag to orbit \u00b7 scroll to zoom \u00b7 click a building to enter.');
+      'Arraste para orbitar, role para dar zoom, clique num pr\u00e9dio '
+      + 'para entrar. A equipe e os dados da frota ficam no painel ao lado.');
     view.append(hint);
+  }
+
+  // Collapsing the roster, from the host's own control.
+  //
+  // Every other panel collapses its sidebar by clicking the active rail icon, and
+  // .layout.sidebar-collapsed is how the host records that. The Office roster
+  // lives inside the frame, where that class cannot reach it — so with the host
+  // sidebar already yielding its track (office-nav.css) the rail click became a
+  // dead control: measured 0px wide before and after, no visual change either
+  // way. This forwards the state across the boundary instead, so the one gesture
+  // the operator already knows keeps working and the city gets the full width.
+  //
+  // Same-origin, so a direct call rather than postMessage; wrapped because the
+  // frame is cross-origin the moment anyone reconfigures where Office is served.
+  let collapseObserver = null;
+
+  function syncCollapsed() {
+    const layout = document.querySelector('.layout');
+    const frame = document.querySelector('[data-office-frame]');
+    if (!layout || !frame) return;
+    const collapsed = layout.classList.contains('sidebar-collapsed');
+    try {
+      const doc = frame.contentDocument;
+      const app = doc && doc.querySelector('.office-app');
+      if (app) app.classList.toggle('roster-collapsed', collapsed);
+    } catch (error) {
+      // Cross-origin: the roster keeps its own header toggle, which is never hidden
+      // when this sync cannot run.
+    }
+  }
+
+  function watchCollapsed() {
+    if (collapseObserver) return;
+    const layout = document.querySelector('.layout');
+    if (!layout) return;
+    collapseObserver = new MutationObserver(syncCollapsed);
+    collapseObserver.observe(layout, { attributes: true, attributeFilter: ['class'] });
   }
 
   function onOpen() {
     const panel = ensurePanel();
     if (nav) nav.show();
     load(panel);
+    watchCollapsed();
+    syncCollapsed();
   }
 
   if (!window.HermesPanelNav) {

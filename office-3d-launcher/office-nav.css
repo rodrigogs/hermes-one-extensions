@@ -4,9 +4,10 @@
 .sidebar-nav .office-3d-nav-label{display:inline}
 @media(max-width:900px){.sidebar-nav .office-3d-nav-label{display:none}}
 
-/* Office sidebar. The head, buttons and tooltips are the host's own classes, so
-   they need no styling here — only the one element the host has no equivalent
-   for. Uses host tokens so it tracks theme changes. */
+/* Office sidebar. Above 641px the panel's own roster fills this track (see the
+   media query below) and this view is not the column — so it carries only the
+   camera hint, which is also all it needs at the widths where the roster is a
+   sheet over the city. */
 .sidebar .panel-view[data-panel-token="office"] .office-side-hint {
   padding: 12px 14px;
   font-size: 12px;
@@ -14,3 +15,44 @@
   color: var(--text-dim, var(--muted, currentColor));
   opacity: 0.75;
 }
+
+/* ── the Office takes the sidebar track ─────────────────────────────────────
+   The panel's own roster is its sidebar: same column width, same plane, drawn by
+   the app that owns the data. Two cheaper shapes failed first — mirroring the
+   fleet into a host-built list gave two renderers and two copies of the state,
+   and relocating the app's roster node into this sidebar stripped its styling
+   (the rules are bundled in the frame's document) and killed its React
+   listeners (they are attached at the root container, which stayed behind).
+
+   So the shell yields the track instead. The frame already spans the full panel
+   width, so with this column collapsed the roster inside it lands against the
+   rail exactly where the conversation list sits for Chats.
+
+   min-width and the !important on width mirror the host's own
+   .layout.sidebar-collapsed rule, and for its reasons: @media(max-width:900px)
+   gives .sidebar a 180px min-width, and the resize handle writes an inline
+   width that only !important can outrank.
+
+   Bounded at 641px — the host's collapse breakpoint. Below it the rail is gone
+   and this sidebar IS the navigation, so collapsing it would strand the operator
+   inside the Office with no way back to Chats. There the drawer keeps showing
+   the Office panel-view below, and the roster returns to a sheet over the city. */
+@media (min-width: 641px) {
+  .layout:has(> main.main.showing-x-office) > .sidebar:not(.mobile-open) {
+    width: 0 !important;
+    min-width: 0;
+    opacity: 0;
+    /* Zero, not transparent as the host's own collapse rule does: there the 1px
+       falls between the rail and page content that has its own separation. Here
+       the panel's roster stands in for the sidebar, and a 1px line of page
+       background between it and the rail is a seam the real sidebar never has. */
+    border-right-width: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .layout:has(> main.main.showing-x-office) > .sidebar .resize-handle { display: none; }
+}
+
+/* The frame is one element, so a collapsed roster does not narrow it: the app
+   hides its own column and the canvas reflows to fill. That class is written by
+   syncCollapsed() in office-nav.js, from .layout.sidebar-collapsed. */
