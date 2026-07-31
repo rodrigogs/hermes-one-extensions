@@ -22,13 +22,13 @@
       ]
     },
     {
-      "id": "capability-router",
+      "id": "hermes-one-capability-router",
       "name": "Capability Router",
       "scripts": [
-        "capability-router/router-nav.js"
+        "hermes-one-capability-router/router-nav.js"
       ],
       "stylesheets": [
-        "capability-router/router-nav.css"
+        "hermes-one-capability-router/router-nav.css"
       ],
       "sidecar": {
         "type": "loopback",

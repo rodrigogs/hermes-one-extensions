@@ -81,7 +81,7 @@ Radius: 7px on controls, 9px on inputs, 999px on the one pill that gates writing
 - **An empty state that is a finding says so.** "5 facts have no topic" is an
   operator finding, not a blank space.
 - **Derived data admits it.** A relationship the system inferred names its
-  evidence ("shares capability-router"); a recalled memory says it is reference
+  evidence ("shares hermes-one-capability-router"); a recalled memory says it is reference
   data, not an instruction.
 
 ## 6. Writing is a locked door

@@ -25,7 +25,7 @@
   //    not compose: tapping a native tab set showing-kanban but never cleared my
   //    panel's `hidden=false`, and my panel — later in the DOM — stayed on top.
   //    Measured live: main.className became "main showing-kanban" while
-  //    #capability-router-panel was still the only visible .main-view. Tapping
+  //    #hermes-one-capability-router-panel was still the only visible .main-view. Tapping
   //    Kanban showed the Router. The operator was trapped.
   //
   //    So: an extension panel is visible only while its own token is on <main>,
@@ -262,7 +262,7 @@
    *                                 defaults to label. They differ where the short
    *                                 form would be ambiguous next to a host tab.
    * @param {string} spec.iconPath   raw <path>/<circle> markup, no <svg> wrapper
-   * @param {string} spec.navClass   the surface's own nav class, e.g. 'capability-router-nav'
+   * @param {string} spec.navClass   the surface's own nav class, e.g. 'hermes-one-capability-router-nav'
    * @param {Function} spec.onOpen   called when the panel is opened
    * @param {string} [spec.after]    data-panel value to insert after; defaults to 'kanban'
    * @returns {{open: Function, adopt: Function}} adopt(el) tags a panel element

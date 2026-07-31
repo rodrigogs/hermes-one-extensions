@@ -6,8 +6,9 @@ It adds integrated views to the Hermes One shell without forking the WebUI:
 
 - **Hermes One Extension Kit** — host-native panel lifecycle, navigation and theme bridge used by the other extensions;
 - **Office 3D** — persistent iframe view for the local `/office/` scene;
-- **Profile Router** — operational view for the local profile-routing sidecar;
-- **Fact Explorer** — read-only view of the Holographic Memory fact store.
+- **Capability Router** — operational view for the local model-routing sidecar:
+  the capability ladder, the blocklist and breaker, and the recorded decisions;
+- **Memory Graph** — read-only view of the Holographic Memory fact store.
 
 ## Runtime contract
 
@@ -43,7 +44,7 @@ node --check hermes-theme-bridge.js
 Validate every extension script after a change:
 
 ```bash
-node --check capability-router/router-nav.js
+node --check hermes-one-capability-router/router-nav.js
 node --check memory-graph/memory-nav.js
 node --check hermes-one-office-3d/office-nav.js
 ```
