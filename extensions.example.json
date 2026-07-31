@@ -12,13 +12,13 @@
       ]
     },
     {
-      "id": "office-3d-launcher",
+      "id": "hermes-one-office-3d",
       "name": "Office 3D",
       "scripts": [
-        "office-3d-launcher/office-nav.js"
+        "hermes-one-office-3d/office-nav.js"
       ],
       "stylesheets": [
-        "office-3d-launcher/office-nav.css"
+        "hermes-one-office-3d/office-nav.css"
       ]
     },
     {

@@ -45,7 +45,7 @@ Validate every extension script after a change:
 ```bash
 node --check capability-router/router-nav.js
 node --check memory-graph/memory-nav.js
-node --check office-3d-launcher/office-nav.js
+node --check hermes-one-office-3d/office-nav.js
 ```
 
 ## Safety

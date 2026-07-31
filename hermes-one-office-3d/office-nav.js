@@ -112,13 +112,20 @@
 
   // Collapsing the roster, from the host's own control.
   //
-  // Every other panel collapses its sidebar by clicking the active rail icon, and
-  // .layout.sidebar-collapsed is how the host records that. The Office roster
-  // lives inside the frame, where that class cannot reach it — so with the host
-  // sidebar already yielding its track (office-nav.css) the rail click became a
-  // dead control: measured 0px wide before and after, no visual change either
-  // way. This forwards the state across the boundary instead, so the one gesture
-  // the operator already knows keeps working and the city gets the full width.
+  // Every host panel collapses its sidebar by clicking the active rail icon, and
+  // .layout.sidebar-collapsed is how the host records that. Two things had to be
+  // true for the Office to honour the same gesture, and neither was:
+  //
+  //   * The extension icons had no second click at all — the kit only ever called
+  //     open(). Measured: clicking an already-active Office icon did nothing. The
+  //     kit now performs the host's own collapse for its own buttons.
+  //   * The roster lives inside the frame, where .layout.sidebar-collapsed cannot
+  //     reach it, so even a working toggle would have left it on screen while the
+  //     host column it stands in for was already gone.
+  //
+  // This closes the second half: the state crosses the frame boundary as
+  // .roster-collapsed, so the gesture the operator already knows keeps working and
+  // the city takes the full width.
   //
   // Same-origin, so a direct call rather than postMessage; wrapped because the
   // frame is cross-origin the moment anyone reconfigures where Office is served.
@@ -156,9 +163,9 @@
   }
 
   if (!window.HermesPanelNav) {
-    console.error('[office-3d-launcher] Hermes One Extension Kit did not load; the '
+    console.error('[hermes-one-office-3d] Hermes One Extension Kit did not load; the '
       + 'Office button cannot be installed. Check that "hermes-one-extension-kit" is listed '
-      + 'BEFORE "office-3d-launcher" in extensions.json.');
+      + 'BEFORE "hermes-one-office-3d" in extensions.json.');
     return;
   }
 
@@ -167,7 +174,7 @@
     label: 'Office',
     title: 'Office 3D',
     iconPath: ICON,
-    navClass: 'office-3d-nav',
+    navClass: 'hermes-one-office-3d-nav',
     onOpen,
     sidebarView: buildSidebar,
   });

@@ -151,6 +151,12 @@
   // What the host believes it is showing. Read-only: the value is a private `let`
   // in panels.js and assigning it would break on any host update — and the host
   // ships updates (the shell was offering 11 while this was written).
+  // The host's own collapse gate (_isDesktopWidth, min-width:641px). Below it the
+  // sidebar is an overlay and collapsing it would strand the operator with no rail.
+  function isDesktopWidth() {
+    try { return window.matchMedia('(min-width:641px)').matches; } catch (_) { return true; }
+  }
+
   function hostPanel() {
     try { return typeof _currentPanel === 'string' ? _currentPanel : null; } catch (_) { return null; }
   }
@@ -169,13 +175,37 @@
     if (wrapped || typeof window.switchPanel !== 'function') return;
     const original = window.switchPanel;
     window.switchPanel = function hermesPanelAwareSwitchPanel(...args) {
+      // Was an extension panel on screen when this navigation started?
+      const wasHeld = held();
       // Release BEFORE the host runs, so its own [hidden] toggles land on a view
       // list we are no longer claiming — and so prevPanel/nextPanel logic inside it
       // sees a coherent world.
       release();
+      // show() moves the host's token to 'chat' so its CSS stops matching its own
+      // views, which leaves _currentPanel === 'chat' for as long as our panel is up.
+      // The host's rail then reads a click on Chats as a click on the panel that is
+      // already current and collapses the sidebar instead of navigating —
+      // measured on a fresh load: 300px, Office, then 1px on returning to Chats.
+      //
+      // Leaving an extension panel is a navigation, never a collapse, so the
+      // double-duty branch is suppressed for exactly that transition. Dropping
+      // fromRailClick is what does it; every other opt is passed through.
+      if (wasHeld && args[1] && args[1].fromRailClick) {
+        args[1] = { ...args[1], fromRailClick: false };
+      }
       return original.apply(this, args);
     };
     wrapped = true;
+  }
+
+  /** True when one of our panels currently owns the main view. */
+  function held() {
+    const host = main();
+    if (!host) return false;
+    for (const t of PANELS.keys()) {
+      if (host.classList.contains(`showing-x-${t}`)) return true;
+    }
+    return false;
   }
 
   function release() {
@@ -266,7 +296,19 @@
       button.innerHTML = withLabel
         ? `${icon}<span class="${spec.navClass}-label">${spec.label}</span>`
         : icon;
-      button.addEventListener('click', open);
+      // Re-clicking the ACTIVE icon collapses the sidebar, which is what the rail
+      // does for every host panel (panels.js: prevPanel === nextPanel -> collapse).
+      // Without this the extension panels were the only ones whose rail icon had no
+      // second gesture — measured, the second click did nothing at all.
+      button.addEventListener('click', () => {
+        if (button.classList.contains('active')
+            && typeof window.toggleSidebar === 'function'
+            && isDesktopWidth()) {
+          window.toggleSidebar();
+          return;
+        }
+        open();
+      });
       return button;
     };
 

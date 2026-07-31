@@ -1,8 +1,8 @@
-.office-3d-nav{color:var(--muted)}
-.office-3d-nav:hover{color:var(--text);background:rgba(255,255,255,.06)}
-.office-3d-nav-label{display:none}
-.sidebar-nav .office-3d-nav-label{display:inline}
-@media(max-width:900px){.sidebar-nav .office-3d-nav-label{display:none}}
+.hermes-one-office-3d-nav{color:var(--muted)}
+.hermes-one-office-3d-nav:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.hermes-one-office-3d-nav-label{display:none}
+.sidebar-nav .hermes-one-office-3d-nav-label{display:inline}
+@media(max-width:900px){.sidebar-nav .hermes-one-office-3d-nav-label{display:none}}
 
 /* Office sidebar. Above 641px the panel's own roster fills this track (see the
    media query below) and this view is not the column — so it carries only the
