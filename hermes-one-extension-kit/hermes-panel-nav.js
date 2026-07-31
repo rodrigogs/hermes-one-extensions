@@ -280,6 +280,28 @@
       try { spec.onOpen(); } catch (error) { console.error(`[${spec.token}] open failed`, error); }
     };
 
+    // The host hides tabs listed in hidden_tabs by putting .nav-tab-hidden on every
+    // [data-panel] element — once, at boot. Our buttons are created after that pass,
+    // so they were born visible no matter what the operator had chosen: measured with
+    // hidden_tabs ["x-office"], the rail button had no .nav-tab-hidden and rendered
+    // display:flex, and re-running the host's pass by hand hid it immediately.
+    //
+    // Calling the host's own function rather than reimplementing the rule: it owns
+    // _ALWAYS_VISIBLE_TABS and the "active tab became hidden" fallback, and a second
+    // copy of that logic here is one that drifts. Both are top-level declarations in
+    // a classic script, so they are on window; guarded because a host that stops
+    // exposing them must not break panel registration.
+    const applyHostTabVisibility = () => {
+      try {
+        if (typeof window._applyTabVisibility === 'function'
+            && typeof window._getHiddenTabs === 'function') {
+          window._applyTabVisibility(window._getHiddenTabs());
+        }
+      } catch (error) {
+        console.warn('[hermes-panel-nav] could not apply the host tab visibility', error);
+      }
+    };
+
     const build = (extraClass, withLabel) => {
       const button = document.createElement('button');
       button.type = 'button';
@@ -345,6 +367,7 @@
       const ref = rail.querySelector(`[data-panel="${anchor}"]`);
       if (ref && ref.nextSibling) rail.insertBefore(button, ref.nextSibling);
       else rail.insertBefore(button, rail.querySelector('.rail-spacer') || null);
+      applyHostTabVisibility();
       return true;
     };
 
@@ -356,6 +379,7 @@
       const ref = nav.querySelector(`[data-panel="${anchor}"]`);
       if (ref && ref.nextSibling) nav.insertBefore(button, ref.nextSibling);
       else nav.append(button);
+      applyHostTabVisibility();
       return true;
     };
 
