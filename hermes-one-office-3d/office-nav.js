@@ -67,7 +67,7 @@
     // onOpen's sync runs before this document exists, so the first collapse state
     // would be missed on a cold open — and it also has to re-apply after a
     // reload, which throws the class away with the old document.
-    frame.addEventListener('load', syncCollapsed);
+    frame.addEventListener('load', () => { syncCollapsed(); syncHostWidth(); });
     frame.src = OFFICE_PATH;
     frame.dataset.loaded = 'true';
   }
@@ -131,11 +131,20 @@
   // frame is cross-origin the moment anyone reconfigures where Office is served.
   let collapseObserver = null;
 
+  /** True while the host still shows its rail, i.e. where a desktop column exists. */
+  function hostIsDesktop() {
+    try { return window.matchMedia('(min-width:641px)').matches; } catch (_) { return true; }
+  }
+
   function syncCollapsed() {
     const layout = document.querySelector('.layout');
     const frame = document.querySelector('[data-office-frame]');
     if (!layout || !frame) return;
-    const collapsed = layout.classList.contains('sidebar-collapsed');
+    // Below the host's own breakpoint the rail is gone and the sidebar is an overlay,
+    // so there is no column to stand in for and .roster-collapsed means nothing. The
+    // host deliberately leaves .sidebar-collapsed set down there, so honouring it
+    // hid the roster while the only control still claimed it was open.
+    const collapsed = hostIsDesktop() && layout.classList.contains('sidebar-collapsed');
     try {
       const doc = frame.contentDocument;
       const app = doc && doc.querySelector('.office-app');
@@ -144,6 +153,34 @@
       // Cross-origin: the roster keeps its own header toggle, which is never hidden
       // when this sync cannot run.
     }
+  }
+
+  /** Tell the framed app how wide the HOST is.
+   *
+   * The office's own `@media (max-width: 640px)` evaluates against the iframe, which
+   * is the host width minus the 48px rail — so between host 641 and 688 the rail was
+   * showing while the app applied its phone layout, putting the roster over the 3D
+   * scene as a sheet. A class driven by the host's real width is measured where the
+   * decision actually belongs.
+   */
+  function syncHostWidth() {
+    const frame = document.querySelector('[data-office-frame]');
+    if (!frame) return;
+    try {
+      const app = frame.contentDocument && frame.contentDocument.querySelector('.office-app');
+      if (app) app.classList.toggle('host-narrow', !hostIsDesktop());
+    } catch (_) { /* cross-origin: the app keeps its own viewport rule */ }
+  }
+
+  let resizeWatched = false;
+
+  function watchResize() {
+    if (resizeWatched) return;
+    resizeWatched = true;
+    // Both states are derived from the host, and neither had a resize path: crossing
+    // the breakpoint left the previous answer in place until something else mutated a
+    // class or reloaded the frame.
+    window.addEventListener('resize', () => { syncCollapsed(); syncHostWidth(); });
   }
 
   function watchCollapsed() {
@@ -159,7 +196,9 @@
     if (nav) nav.show();
     load(panel);
     watchCollapsed();
+    watchResize();
     syncCollapsed();
+    syncHostWidth();
   }
 
   if (!window.HermesPanelNav) {
