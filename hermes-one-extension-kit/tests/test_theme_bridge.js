@@ -53,10 +53,20 @@ const panelCssPath = PANEL_CSS_CANDIDATES.find((p) => fs.existsSync(p)) || PANEL
  * sync check silently passed on the box while checking nothing, which is the
  * failure mode the check exists to prevent. So the candidates are searched, and
  * finding NONE is a failure rather than a skip. */
+/* Every candidate is anchored to __dirname or to an absolute override. The list
+ * used to end in a bare 'src/office-panel-tokens.css', which resolves against the
+ * CWD: it hit only when the runner happened to be invoked from the office
+ * checkout root, and nothing invokes it from there. So the sheet was never found
+ * from any real CWD and these three checks were red on the box. The walk-up finds
+ * the office checkout as a sibling of the extensions repo, which is how it is
+ * laid out both here and in the README's instructions. */
 const OFFICE_CANDIDATES = [
+  ...(process.env.OFFICE_TOKENS_CSS ? [path.resolve(process.env.OFFICE_TOKENS_CSS)] : []),
   path.join(HERE, '..', 'office-panel-tokens.css'),                    // deployed: tests/ -> extension dir
   path.join(HERE, 'office-panel-tokens.css'),                          // the source checkout
-  process.env.OFFICE_TOKENS_CSS || 'src/office-panel-tokens.css',       // the deploy target
+  // ...and the deploy target, as a sibling checkout: kit/tests -> kit -> repo -> $HOME
+  ...Array.from({ length: 4 }, (_, up) =>
+    path.join(HERE, ...Array(up + 1).fill('..'), 'hermes-office-web', 'src', 'office-panel-tokens.css')),
 ];
 const officeCssPath = OFFICE_CANDIDATES.find((p) => fs.existsSync(p)) || null;
 

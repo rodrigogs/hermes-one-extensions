@@ -18,8 +18,18 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const test = require('node:test');
 const vm = require('node:vm');
+const path = require('node:path');
 
-const sourcePath = 'hermes-panel-nav.js';
+// Anchored to __dirname, not to the CWD. A bare 'hermes-panel-nav.js' resolves
+// against wherever the runner was launched, so this suite was 17/17 ENOENT from
+// the repo root and only green when someone happened to cd into this directory
+// first. Both layouts exist: the deployed extension keeps tests/ inside the
+// extension directory, the checkout keeps them side by side.
+const SOURCE_CANDIDATES = [
+  path.join(__dirname, '..', 'hermes-panel-nav.js'),
+  path.join(__dirname, 'hermes-panel-nav.js'),
+];
+const sourcePath = SOURCE_CANDIDATES.find((p) => fs.existsSync(p)) || SOURCE_CANDIDATES[0];
 
 // A DOM stub with the parts this module actually touches: class lists that
 // behave, a queryable tree, and dataset<->attribute duality where it matters.

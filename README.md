@@ -33,7 +33,14 @@ and sidecar health together.
 
 ## Development
 
-The shared shell tests resolve files relative to the `hermes-one-extension-kit` directory:
+Run every suite in the repository from the root:
+
+```bash
+npm test
+```
+
+The suites resolve their subjects against their own directory, so they also run
+from anywhere:
 
 ```bash
 cd hermes-one-extension-kit
@@ -41,6 +48,10 @@ node --test tests/*.js
 node --check hermes-panel-nav.js
 node --check hermes-theme-bridge.js
 ```
+
+The `office-panel-tokens.css` sync check needs the office checkout. It is found
+as a sibling of this repository; point `OFFICE_TOKENS_CSS` at the file if yours
+lives elsewhere.
 
 Validate every extension script after a change:
 

@@ -1,0 +1,9 @@
+{
+  "name": "hermes-one-extensions",
+  "private": true,
+  "description": "Panel extensions for the Hermes One shell",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"*/tests/test_*.js\""
+  }
+}
