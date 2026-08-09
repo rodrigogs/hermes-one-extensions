@@ -1,0 +1,8 @@
+{
+  "id": "hermes-one-fork-keeper",
+  "name": "Fork Keeper",
+  "description": "Shows whether this Hermes install is behind its upstream and merges it in when it is. Fills the gap `hermes update` leaves: its upstream sync is fast-forward only, so it skips any fork carrying local commits.",
+  "scripts": [
+    "fork-keeper-nav.js"
+  ]
+}
