@@ -304,6 +304,14 @@ test('a second sync cannot start while one is running', () => {
   const at = markup.indexOf('async function act(');
   const act = markup.slice(at, markup.indexOf('\n  }', at));
   assert.match(act, /if \(busy\) return/, 'act() does not refuse a concurrent run');
+  // The reset must be in a finally. show() writes innerHTML, so a throw from
+  // inside the catch block would skip a plain `busy = false` statement and leave
+  // the flag stuck true — both action buttons dead for the life of the panel.
+  const finallyAt = act.indexOf('} finally {');
+  assert.ok(finallyAt > -1, 'act() has no finally block');
+  const resetAt = act.indexOf('busy = false');
+  assert.ok(resetAt > finallyAt,
+    'busy is reset outside the finally, so a throw in the catch leaves it stuck');
 
   // ENUMERATE both action buttons rather than matching the substring once: the
   // guard appears twice (dry and sync), so a single match stays green when only
@@ -325,6 +333,40 @@ test('requests cannot hang forever', () => {
   assert.match(markup, /AbortController/, 'no request timeout');
   assert.match(markup, /signal: ac\.signal/, 'the abort signal is not passed to fetch');
   assert.match(markup, /timed out waiting for/, 'a timeout is not reported as one');
+});
+
+test('the timeout covers reading the body, not just the headers', () => {
+  // fetch() settles as soon as the response HEADERS arrive. Clearing the timeout
+  // there left res.json() — which waits for the whole BODY — with no deadline, so
+  // a server that sent headers and then stalled froze the panel permanently: the
+  // exact failure the timeout exists to prevent.
+  const at = markup.indexOf('async function call(');
+  assert.ok(at > -1, 'call() not found');
+  let depth = 0, end = -1;
+  for (let i = markup.indexOf('{', at); i < markup.length; i += 1) {
+    if (markup[i] === '{') depth += 1;
+    else if (markup[i] === '}') { depth -= 1; if (depth === 0) { end = i; break; } }
+  }
+  const call = markup.slice(at, end);
+  const bodyAt = call.search(/await readBody\(|await res\.json\(/);
+  const clearAt = call.indexOf('clearTimeout');
+  assert.ok(bodyAt > -1, 'call() never reads the body');
+  assert.ok(clearAt > -1, 'call() never clears its timeout');
+  assert.ok(clearAt > bodyAt,
+    'clearTimeout runs before the body is read, so a stalled body has no deadline');
+});
+
+test('a non-2xx explains itself instead of collapsing to a status code', () => {
+  // The bridge answers 400 (the upstream ref does not resolve), 502 (unparsable
+  // CLI output) and 504 (timeout) with an explanation. Throwing on the status
+  // alone reduced all of them to "HTTP 400", which names nothing to fix.
+  const at = markup.indexOf('async function call(');
+  const call = markup.slice(at, markup.indexOf('\n  }', at));
+  assert.match(call, /body\.error \|\| body\.reason/,
+    'the error body is discarded, so every bridge failure reads as a bare status');
+  // And the body must be read BEFORE the status is judged.
+  assert.ok(call.search(/await readBody\(|await res\.json\(/) < call.indexOf('if (!res.ok)'),
+    'the status is judged before the body is read, so the explanation is lost');
 });
 
 test('a failed status refresh disarms the confirm row', () => {

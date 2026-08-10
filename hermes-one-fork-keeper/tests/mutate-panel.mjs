@@ -56,6 +56,16 @@ const MUTATIONS = [
   ['a pending gateway restart is no longer surfaced',
    '      (s.restart_pending',
    '      (false'],
+
+  // show() writes innerHTML, so a throw inside the catch block skips a plain
+  // reset and leaves busy stuck true: both action buttons dead for the life of
+  // the panel, with no error the operator can act on.
+  ['the busy reset leaves the finally block',
+   `    } finally {
+      // finally, not a plain statement after the catch`,
+   `    }
+    if (false) {
+      // finally, not a plain statement after the catch`],
 ];
 
 function runSuite() {

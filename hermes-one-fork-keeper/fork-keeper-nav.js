@@ -212,19 +212,46 @@
         credentials: 'same-origin',
         signal: ac.signal,
       });
+      // The timer deliberately keeps running past this point. fetch() settles as
+      // soon as the response HEADERS arrive, so clearing the timeout here left
+      // res.json() — which waits for the whole BODY — with no deadline at all: a
+      // server that sends headers and then stalls froze the panel permanently,
+      // the exact failure the timeout exists to prevent. It is cleared in the
+      // outer finally, after the body has been read.
+      const body = await readBody(res);
+      if (!res.ok) {
+        // Read the body even on a non-2xx: the bridge answers 400 (the upstream
+        // ref does not resolve), 502 (unparsable CLI output) and 504 (timeout)
+        // with an explanation in "error" or "reason". Throwing on the status
+        // alone reduced every one of those to "HTTP 400", which tells the
+        // operator nothing about what to fix.
+        const why = body && (body.error || body.reason);
+        throw new Error(why ? String(why)
+                            : 'HTTP ' + res.status + ' from /api/fork-keeper/' + action);
+      }
+      if (!body || typeof body !== 'object') {
+        throw new Error('unreadable response from /api/fork-keeper/' + action);
+      }
+      return body;
     } catch (err) {
-      throw new Error(err && err.name === 'AbortError'
-        ? 'timed out waiting for /api/fork-keeper/' + action
-        : String((err && err.message) || err));
+      if (err && err.name === 'AbortError') {
+        throw new Error('timed out waiting for /api/fork-keeper/' + action);
+      }
+      throw err;
     } finally {
       clearTimeout(timer);
     }
-    if (!res.ok) throw new Error('HTTP ' + res.status + ' from /api/fork-keeper/' + action);
-    const body = await res.json();
-    if (!body || typeof body !== 'object') {
-      throw new Error('unreadable response from /api/fork-keeper/' + action);
+  }
+
+  async function readBody(res) {
+    try {
+      return await res.json();
+    } catch (err) {
+      // An abort mid-body must stay an abort, so call()'s handler can name it a
+      // timeout rather than reporting "unreadable response".
+      if (err && err.name === 'AbortError') throw err;
+      return null;
     }
-    return body;
   }
 
   function render(s) {
@@ -351,10 +378,16 @@
       show(r.ok, r.reason, r.conflicted);
     } catch (err) {
       show(false, String(err.message || err), null);
+    } finally {
+      // finally, not a plain statement after the catch: show() writes innerHTML,
+      // so a throw from inside the catch block itself would skip the reset and
+      // leave busy stuck true — both action buttons dead for the life of the
+      // panel, with no error the operator can act on.
+      //
+      // Cleared BEFORE the refresh below, so the refresh that follows an action
+      // is the one allowed to re-enable the buttons.
+      busy = false;
     }
-    // Cleared BEFORE the refresh, so the refresh that follows an action is the
-    // one allowed to re-enable the buttons.
-    busy = false;
     await refresh();
   }
 
