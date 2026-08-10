@@ -9,7 +9,10 @@ It adds integrated views to the Hermes One shell without forking the WebUI:
 - **Capability Router** — operational view for the local model-routing sidecar:
   the capability ladder, the blocklist and breaker, and the recorded decisions;
 - **Fact Explorer** — read-only view of the Holographic Memory fact store: the
-  fact list is the primary surface, with a derived graph as a second mode.
+  fact list is the primary surface, with a derived graph as a second mode;
+- **Fork Keeper** — whether this install is behind its upstream, and merging it
+  in when it is. `hermes update` skips a fork that carries local commits, since
+  its upstream sync is fast-forward only.
 
 ## Runtime contract
 
@@ -30,6 +33,22 @@ also use their ID in the same-origin proxy path:
 Do not rename an ID as a file-only change. Follow the migration plan in the
 `delegate-profile` repository and validate the manifest, proxy consent, token
 and sidecar health together.
+
+**Fork Keeper is the exception to the sidecar path.** It has no sidecar of its
+own; it calls three routes the WebUI serves directly:
+
+```text
+GET  /api/fork-keeper/status
+POST /api/fork-keeper/dry-run
+POST /api/fork-keeper/sync
+```
+
+Those routes are not part of this repository — they live in the WebUI
+(`api/fork_keeper_bridge.py`, dispatched from `api/routes.py`) and shell out to
+`hermes sync-fork`. Without them the panel loads and reports "Status
+unavailable"; the extension itself is doing nothing wrong at that point. The
+panel deliberately never runs git, so the merge policy lives in one place that
+the CLI, the cron job and this panel all share.
 
 ## Development
 
