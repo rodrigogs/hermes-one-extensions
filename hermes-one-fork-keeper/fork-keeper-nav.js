@@ -26,56 +26,130 @@
   function panelHtml() {
     return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><style>
-  :root { color-scheme: light dark; }
-  body { margin:0; font:13px/1.5 ui-sans-serif,system-ui,sans-serif;
-         background:transparent; color:inherit; padding:18px 20px; }
-  h1 { font-size:15px; margin:0 0 2px; font-weight:600; }
-  .sub { opacity:.6; font-size:12px; margin-bottom:18px; }
-  .state { border:1px solid currentColor; border-radius:8px; padding:14px 16px;
-           opacity:.98; margin-bottom:14px; }
-  .state.ok    { border-color:#3fa45b; }
-  .state.warn  { border-color:#d19a2f; }
-  .state.err   { border-color:#c2544d; }
-  .headline { font-weight:600; margin-bottom:6px; }
-  .facts { display:grid; grid-template-columns:auto 1fr; gap:2px 14px;
-           font-variant-numeric:tabular-nums; font-size:12px; opacity:.85; }
-  .facts dt { opacity:.65; }
-  .note { font-size:12px; opacity:.7; margin-top:10px; }
-  .row { display:flex; gap:8px; flex-wrap:wrap; margin:16px 0 0; }
-  button { font:inherit; padding:7px 13px; border-radius:6px;
-           border:1px solid currentColor; background:transparent; color:inherit;
-           cursor:pointer; opacity:.9; }
-  button:hover:not(:disabled) { opacity:1; }
-  button:disabled { opacity:.4; cursor:default; }
-  pre { white-space:pre-wrap; font-size:12px; margin:14px 0 0;
-        padding:12px; border-radius:6px; background:rgba(127,127,127,.12);
-        max-height:34vh; overflow:auto; }
-  .hidden { display:none; }
+  /* Tokens come from the host via hermes-theme-bridge.js. The host ships 21
+     skins x light/dark, so a copied palette is wrong in 20 of 21 — every value
+     below falls back only for the case where the bridge has not painted yet. */
+  :root {
+    --bg: var(--host-bg, #0a0a0c);
+    --text: var(--host-text, #f3f3f6);
+    --muted: var(--host-muted, #9a9aa8);
+    --line: var(--host-border, #212127);
+    --line-strong: var(--host-border2, #33333d);
+
+    --sans: var(--host-font-ui, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif);
+    --mono: var(--host-font-mono, ui-monospace, "SFMono-Regular", "Cascadia Code", Consolas, monospace);
+    --t-small: var(--host-font-size-sm, 12px);
+    --t-body: var(--host-font-size-md, 14px);
+    --t-head: 18px;
+
+    --radius: var(--host-radius-md, 8px);
+    --radius-sm: var(--host-radius-sm, 4px);
+    --focus: 0 0 0 3px var(--host-focus-ring, rgba(243, 243, 246, .22));
+    --ease: cubic-bezier(.16, 1, .3, 1);
+
+    /* Pre-mix fallbacks: honest for an engine with no color-mix, where the raw
+       hue at least still means the right thing. Derived properly below. */
+    --ok-text: var(--host-success, #4ade9b);
+    --warn-text: var(--host-warning, #f7b955);
+    --bad-text: var(--host-error, #ff6b7d);
+
+    color-scheme: var(--host-color-scheme, dark);
+  }
+
+  /* @supports, not the usual declare-twice fallback: a custom property accepts
+     any token stream at parse time, so an engine without color-mix() would keep
+     the declaration and fail later, at computed-value time. 45% is measured —
+     worst case 5.08:1 across the host's full palettes x both polarities, where
+     50% gives 4.44:1 and does not clear the 4.5:1 floor. Mixing toward --text
+     rather than away from --bg is what makes it polarity-proof. */
+  @supports (color: color-mix(in srgb, red 50%, blue)) {
+    :root {
+      --ok-text:   color-mix(in srgb, var(--host-success, #4ade9b) 45%, var(--host-text, #f3f3f6));
+      --warn-text: color-mix(in srgb, var(--host-warning, #f7b955) 45%, var(--host-text, #f3f3f6));
+      --bad-text:  color-mix(in srgb, var(--host-error, #ff6b7d) 45%, var(--host-text, #f3f3f6));
+    }
+  }
+
+  body { margin:0; padding:20px 22px; background:transparent; color:var(--text);
+         font:var(--t-body)/1.55 var(--sans); }
+  h1 { font-size:var(--t-head); font-weight:600; letter-spacing:-.18px; margin:0 0 14px; }
+
+  /* The question is answered in the first line. No card: one status block and
+     one control row do not need a frame. */
+  .headline { font-size:var(--t-head); font-weight:600; margin:0 0 2px; }
+  .headline.ok   { color:var(--ok-text); }
+  .headline.warn { color:var(--warn-text); }
+  .headline.bad  { color:var(--bad-text); }
+  .state-word { font-size:var(--t-small); text-transform:uppercase;
+                letter-spacing:.08em; opacity:.9; }
+
+  .facts { display:grid; grid-template-columns:auto 1fr; gap:1px 16px;
+           margin:12px 0 0; font-variant-numeric:tabular-nums;
+           font-size:var(--t-small); }
+  .facts dt { color:var(--muted); }
+  .facts dd { margin:0; }
+
+  .note { font-size:var(--t-small); color:var(--muted); margin:12px 0 0;
+          max-width:68ch; }
+
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:20px 0 0; }
+  button { font:inherit; min-height:44px; padding:0 16px; border-radius:var(--radius-sm);
+           border:1px solid var(--line-strong); background:transparent; color:inherit;
+           cursor:pointer; transition:background 120ms var(--ease); }
+  button:hover:not(:disabled) { background:color-mix(in srgb, var(--text) 8%, transparent); }
+  button:focus-visible { outline:none; box-shadow:var(--focus); }
+  /* The committing button is the only FILLED element on the screen — but only
+     while it can actually be pressed. Scoped with :not(:disabled) and declared
+     before the disabled rule, because a painted-but-inert commit button
+     out-shouts the one control that still works (caught in the render, not the
+     source). */
+  button.commit:not(:disabled) { background:var(--bad-text); border-color:var(--bad-text);
+                  color:var(--host-bg, #0a0a0c); font-weight:600; }
+  button.commit:hover:not(:disabled) { filter:brightness(1.08); }
+  button:disabled { color:var(--muted); border-color:var(--line); cursor:default; }
+
+  .confirm { margin:16px 0 0; padding-left:12px;
+             border-left:1px solid var(--bad-text); max-width:68ch; }
+  .confirm p { margin:0 0 10px; font-size:var(--t-small); }
+
+  .result { margin:16px 0 0; }
+  .result .headline { font-size:var(--t-body); }
+  ul.files { margin:8px 0 0; padding-left:18px; font-family:var(--mono);
+             font-size:var(--t-small); }
+  .detail { font-family:var(--mono); font-size:var(--t-small); color:var(--muted);
+            margin:8px 0 0; white-space:pre-wrap; }
+  [hidden] { display:none; }
 </style></head><body>
   <h1>Fork Keeper</h1>
-  <div class="sub">Merge upstream into this fork. <code>hermes update</code>
-    skips a diverged fork by design — its sync is fast-forward only.</div>
 
-  <div id="state" class="state"><div class="headline">Checking…</div></div>
+  <div id="state" role="status" aria-live="polite">
+    <p class="headline">Checking…</p>
+  </div>
 
   <div class="row">
     <button id="refresh">Refresh</button>
     <button id="dry" disabled>Dry run</button>
-    <button id="sync" disabled>Sync now</button>
+    <button id="sync" class="commit" disabled>Sync now</button>
   </div>
 
-  <pre id="out" class="hidden"></pre>
+  <div id="confirm" class="confirm" hidden>
+    <p id="confirm-text"></p>
+    <div class="row" style="margin:0">
+      <button id="go" class="commit">Merge now</button>
+      <button id="cancel">Cancel</button>
+    </div>
+  </div>
+
+  <div id="result" class="result" role="status" aria-live="polite"></div>
 
 <script>
   const $ = (id) => document.getElementById(id);
-  const out = $('out');
+  const state = $('state'), result = $('result'), confirm = $('confirm');
+  let current = null;
 
-  function say(text) {
-    out.classList.remove('hidden');
-    out.textContent = text;
-  }
+  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
-  // The panel never shells out itself. It asks the webui, which runs the same
+  // The panel never runs git. It asks the webui, which runs the same
   // 'hermes sync-fork' the CLI and the cron job run, so all three surfaces
   // agree by construction rather than by three copies of the same logic.
   async function call(action) {
@@ -88,67 +162,93 @@
   }
 
   function render(s) {
-    const box = $('state');
-    const behind = s.behind ?? 0;
+    current = s;
+    const behind = s.behind ?? 0, ahead = s.ahead ?? 0;
     const actionable = behind > 0 && !s.dirty;
+    const tone = behind === 0 ? 'ok' : 'warn';
+    const word = behind === 0 ? 'Current' : (s.dirty ? 'Blocked' : 'Behind');
 
-    box.className = 'state ' + (s.dirty ? 'warn' : behind ? 'warn' : 'ok');
     const headline = behind === 0
-      ? 'Up to date with upstream.'
-      : (s.diverged
-          ? behind + ' behind, ' + (s.ahead ?? 0) + ' local commit(s) upstream lacks.'
-          : behind + ' commit(s) behind upstream.');
+      ? 'Up to date with upstream'
+      : behind + ' commit' + (behind === 1 ? '' : 's') + ' behind upstream';
 
-    const facts = [
-      ['behind', behind],
-      ['local commits', s.ahead ?? 0],
-      ['merge steps', s.steps ?? 0],
-      ['risky steps', s.conflict_prone ?? 0],
-      ['worktree', s.dirty ? 'dirty' : 'clean'],
-    ].map(([k, v]) => '<dt>' + k + '</dt><dd>' + v + '</dd>').join('');
+    // Only facts that carry a signal. Merge-step counts are diagnostics about
+    // this panel's own algorithm, not about the fork, so they stay out of the
+    // primary read and appear in the confirm step where they inform a decision.
+    const facts = [];
+    if (ahead) facts.push(['local commits', ahead + ' not upstream']);
+    facts.push(['worktree', s.dirty ? 'uncommitted changes' : 'clean']);
 
-    let note = '';
-    if (s.dirty) {
-      note = '<div class="note">Uncommitted changes present. Sync refuses until the '
-           + 'worktree is clean — an update must never decide what happens to unsaved work.</div>';
-    } else if (s.conflict_prone) {
-      note = '<div class="note">' + s.conflict_prone + ' upstream commit(s) touch files this '
-           + 'fork also changed. Those are merged one at a time so a conflict names a single '
-           + 'commit; on conflict the fork is restored and nothing is left half-merged.</div>';
-    }
-
-    box.innerHTML = '<div class="headline">' + headline + '</div>'
-                  + '<dl class="facts">' + facts + '</dl>' + note;
+    state.innerHTML =
+      '<p class="headline ' + tone + '">' + esc(headline) +
+      ' <span class="state-word">' + esc(word) + '</span></p>' +
+      '<dl class="facts">' +
+      facts.map(([k, v]) => '<dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd>').join('') +
+      '</dl>' +
+      (s.dirty
+        ? '<p class="note">Sync will not run while the worktree is dirty. An update ' +
+          'must never decide what happens to unsaved work.</p>'
+        : '');
 
     $('dry').disabled = !actionable;
     $('sync').disabled = !actionable;
+    if (!actionable) hideConfirm();
+  }
+
+  function hideConfirm() { confirm.hidden = true; }
+
+  function arm() {
+    const s = current || {};
+    const risky = s.conflict_prone ?? 0;
+    $('confirm-text').textContent =
+      'Merge ' + (s.behind ?? 0) + ' upstream commit(s) into this checkout, in ' +
+      (s.steps ?? 0) + ' step(s)' +
+      (risky ? ', ' + risky + ' of which touch files this fork also changed' : '') +
+      '. On conflict the fork is restored and nothing is left half-merged.';
+    confirm.hidden = false;
+    $('go').focus();
+  }
+
+  function show(ok, reason, conflicted) {
+    result.innerHTML =
+      '<p class="headline ' + (ok ? 'ok' : 'bad') + '">' +
+      (ok ? 'Merged' : 'Not merged') + '</p>' +
+      '<p class="detail">' + esc(reason || '') + '</p>' +
+      (conflicted && conflicted.length
+        ? '<ul class="files">' + conflicted.map((f) => '<li>' + esc(f) + '</li>').join('') + '</ul>'
+        : '');
   }
 
   async function refresh() {
     try { render(await call('status')); }
-    catch (err) { $('state').className = 'state err';
-                  $('state').innerHTML = '<div class="headline">Status unavailable</div>';
-                  say(String(err.message || err)); }
+    catch (err) {
+      // A single muted line, not a framed void: a section with no data is
+      // absent or one quiet line, never an empty frame.
+      state.innerHTML = '<p class="note">Status unavailable — ' + esc(err.message || err) + '</p>';
+      $('dry').disabled = true; $('sync').disabled = true;
+    }
   }
 
-  async function act(action, label) {
-    ['refresh', 'dry', 'sync'].forEach((id) => { $(id).disabled = true; });
-    say(label + '…');
+  async function act(action, verb) {
+    hideConfirm();
+    // Refresh stays live: freezing every control during a long merge locks the
+    // operator out and yanks focus from under a screen reader.
+    $('dry').disabled = true; $('sync').disabled = true;
+    result.innerHTML = '<p class="detail">' + verb + '…</p>';
     try {
       const r = await call(action);
-      say((r.ok ? 'OK — ' : 'Did not complete — ') + (r.reason || '')
-        + (r.conflicted && r.conflicted.length
-            ? '\\n\\nconflicted:\\n  ' + r.conflicted.join('\\n  ') : ''));
+      show(r.ok, r.reason, r.conflicted);
     } catch (err) {
-      say(String(err.message || err));
+      show(false, String(err.message || err), null);
     }
-    $('refresh').disabled = false;
     await refresh();
   }
 
   $('refresh').addEventListener('click', refresh);
   $('dry').addEventListener('click', () => act('dry-run', 'Planning'));
-  $('sync').addEventListener('click', () => act('sync', 'Merging upstream'));
+  $('sync').addEventListener('click', arm);
+  $('go').addEventListener('click', () => act('sync', 'Merging upstream'));
+  $('cancel').addEventListener('click', () => { hideConfirm(); $('sync').focus(); });
   refresh();
 </script>
 </body></html>`;
