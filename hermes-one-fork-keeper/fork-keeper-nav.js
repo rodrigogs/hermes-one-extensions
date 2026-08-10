@@ -171,21 +171,83 @@
 
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
+  // The WebUI injects its CSRF token by monkey-patching window.fetch, but only
+  // in documents it renders itself. This panel runs in an iframe srcdoc, which
+  // has its OWN window, so the patched fetch is not here and an unsafe request
+  // arrives with an Origin (srcdoc inherits it) and no token — which the server
+  // rejects with 403. Verified by running the real _check_csrf against this
+  // request shape: token_mismatch. Both action buttons were dead in production.
+  //
+  // The parent document IS a page the WebUI rendered, so its patched fetch has
+  // the token. Borrowing it is the same fix hermes-one-capability-router uses
+  // ("borrows the host's token via window.parent"), and it keeps the token out
+  // of this frame entirely — we never read it, we just let the parent send.
+  const hostFetch = (() => {
+    try {
+      if (window.parent && window.parent !== window && window.parent.fetch) {
+        return window.parent.fetch.bind(window.parent);
+      }
+    } catch (_) {
+      // Cross-origin parent: nothing to borrow. Same-origin is the only case
+      // this panel is mounted in, so fall through rather than guess.
+    }
+    return window.fetch.bind(window);
+  })();
+
   // The panel never runs git. It asks the webui, which runs the same
   // 'hermes sync-fork' the CLI and the cron job run, so all three surfaces
   // agree by construction rather than by three copies of the same logic.
   async function call(action) {
-    const res = await fetch('/api/fork-keeper/' + action, {
-      method: action === 'status' ? 'GET' : 'POST',
-      headers: { 'Accept': 'application/json' },
-    });
+    // A merge can take many minutes on a large backlog, but a request that
+    // never settles leaves the UI frozen with no way back. 15 minutes matches
+    // the bridge's own sync timeout so the panel does not give up on a merge
+    // the server is still doing.
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), action === 'status' ? 30000 : 915000);
+    let res;
+    try {
+      res = await hostFetch('/api/fork-keeper/' + action, {
+        method: action === 'status' ? 'GET' : 'POST',
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin',
+        signal: ac.signal,
+      });
+    } catch (err) {
+      throw new Error(err && err.name === 'AbortError'
+        ? 'timed out waiting for /api/fork-keeper/' + action
+        : String((err && err.message) || err));
+    } finally {
+      clearTimeout(timer);
+    }
     if (!res.ok) throw new Error('HTTP ' + res.status + ' from /api/fork-keeper/' + action);
-    return res.json();
+    const body = await res.json();
+    if (!body || typeof body !== 'object') {
+      throw new Error('unreadable response from /api/fork-keeper/' + action);
+    }
+    return body;
   }
 
   function render(s) {
     current = s;
-    const behind = s.behind ?? 0, ahead = s.ahead ?? 0;
+
+    // Defaulting behind to 0 turned every payload WITHOUT a numeric behind into green
+    // "Up to date with upstream / Current" — including the bridge's own error
+    // objects ({error: ...}, 502, 503). Fabricating health out of a failed read
+    // is the one thing this panel must never do: the operator would stop looking
+    // exactly when something is wrong. An unusable status is stated as unknown.
+    if (typeof s.behind !== 'number' || !Number.isFinite(s.behind)) {
+      const why = s.error ? String(s.error) : 'the status response had no commit count';
+      state.innerHTML =
+        '<p class="headline warn">Status unknown' +
+        ' <span class="state-word">Unknown</span></p>' +
+        '<p class="note">' + esc(why) + '</p>';
+      $('dry').disabled = true;
+      $('sync').disabled = true;
+      hideConfirm();
+      return;
+    }
+
+    const behind = s.behind, ahead = s.ahead ?? 0;
     const actionable = behind > 0 && !s.dirty;
     const tone = behind === 0 ? 'ok' : 'warn';
     const word = behind === 0 ? 'Current' : (s.dirty ? 'Blocked' : 'Behind');
@@ -213,10 +275,20 @@
         ? '<p class="note">Sync will not run while the worktree is dirty. An update ' +
           'must never decide what happens to unsaved work.</p>'
         : '') +
+      // A merge that landed but never reached the running process is the one
+      // state a green "Up to date" actively misleads about: the checkout IS
+      // current and the gateway is not. The cron cannot restart it (#30719), so
+      // this line is the only thing that tells the operator to.
+      (s.restart_pending
+        ? '<p class="note">Merged code is on disk but the gateway still runs the ' +
+          'older build — restart it to pick up ' + esc(String(s.restart_pending).slice(0, 9)) + '.</p>'
+        : '') +
       '<p class="checked">checked ' + clock(new Date()) + '</p>';
 
-    $('dry').disabled = !actionable;
-    $('sync').disabled = !actionable;
+    // The busy flag wins: a refresh landing mid-merge must not hand the operator a
+    // second Sync button while the first merge is still running.
+    $('dry').disabled = !actionable || busy;
+    $('sync').disabled = !actionable || busy;
     if (!actionable) hideConfirm();
   }
 
@@ -245,6 +317,13 @@
         : '');
   }
 
+  // True while a dry-run or sync is in flight. Refresh deliberately stays
+  // clickable during a long merge, and refresh re-enables the action buttons
+  // from the server's status — which would let a second sync-fork start on top
+  // of the running one, two processes merging into the same checkout. This flag
+  // is what makes render() leave the buttons alone until the action finishes.
+  let busy = false;
+
   async function refresh() {
     try { render(await call('status')); }
     catch (err) {
@@ -252,10 +331,16 @@
       // absent or one quiet line, never an empty frame.
       state.innerHTML = '<p class="note">Status unavailable — ' + esc(err.message || err) + '</p>';
       $('dry').disabled = true; $('sync').disabled = true;
+      // An armed confirm row outlives the status it was armed against, so
+      // "Merge now" could be pressed against a reading the panel has just
+      // admitted it cannot make. Disarm.
+      hideConfirm();
     }
   }
 
   async function act(action, verb) {
+    if (busy) return;
+    busy = true;
     hideConfirm();
     // Refresh stays live: freezing every control during a long merge locks the
     // operator out and yanks focus from under a screen reader.
@@ -267,6 +352,9 @@
     } catch (err) {
       show(false, String(err.message || err), null);
     }
+    // Cleared BEFORE the refresh, so the refresh that follows an action is the
+    // one allowed to re-enable the buttons.
+    busy = false;
     await refresh();
   }
 

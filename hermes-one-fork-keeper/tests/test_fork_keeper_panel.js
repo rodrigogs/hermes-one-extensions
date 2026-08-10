@@ -229,3 +229,111 @@ test('interpolated values are escaped before reaching innerHTML', () => {
   assert.match(markup, /esc\(reason/);
   assert.match(markup, /esc\(f\)/);
 });
+
+test('unsafe requests carry the host CSRF token', () => {
+  // The WebUI injects X-Hermes-CSRF-Token by patching window.fetch, but only in
+  // documents it renders itself. This panel runs in an iframe srcdoc, which has
+  // its OWN window, so the patched fetch is absent and a POST arrives with an
+  // Origin (srcdoc inherits it) and no token — which the server rejects with 403.
+  // Verified against the real _check_csrf: token_mismatch. Both action buttons
+  // were dead in production until the panel borrowed the parent's fetch.
+  assert.match(markup, /window\.parent[\s\S]{0,120}\.fetch/,
+    'the panel does not borrow the host fetch; unsafe requests will 403');
+  // And the borrowed function is what call() actually uses.
+  const at = markup.indexOf('async function call(');
+  assert.ok(at > -1, 'call() not found');
+  const call = markup.slice(at, markup.indexOf('\n  }', at));
+  assert.match(call, /hostFetch\(/, 'call() bypasses the borrowed fetch');
+  assert.equal(/[^.]\bfetch\('\/api/.test(call), false,
+    'call() still uses the frame-local fetch for an API request');
+});
+
+test('a status with no commit count is never rendered as healthy', () => {
+  // Defaulting behind to 0 turned every payload WITHOUT a numeric behind into a
+  // green "Up to date with upstream / Current" — including the bridge's own
+  // error objects. Fabricating health out of a failed read is the one thing this
+  // panel must not do: the operator stops looking exactly when something broke.
+  const at = markup.indexOf('function render(');
+  assert.ok(at > -1, 'render() not found');
+  let depth = 0, end = -1;
+  for (let i = markup.indexOf('{', at); i < markup.length; i += 1) {
+    if (markup[i] === '{') depth += 1;
+    else if (markup[i] === '}') { depth -= 1; if (depth === 0) { end = i; break; } }
+  }
+  const render = markup.slice(at, end);
+  assert.match(render, /typeof s\.behind !== 'number'/,
+    'render() does not check that behind is a number');
+  // The guard must come BEFORE the headline is computed, or it cannot prevent
+  // the green reading. Anchored on the assignment, not on the headline text:
+  // that same text appears in the comment above the guard explaining this bug,
+  // and matching the comment made this assertion fail against correct code.
+  const headlineAt = render.indexOf('const headline =');
+  assert.ok(headlineAt > -1, 'headline assignment not found');
+  assert.ok(render.indexOf("typeof s.behind !== 'number'") < headlineAt,
+    'the guard runs after the headline is built, so it cannot prevent it');
+  // And the guard has to actually stop rendering, not just warn.
+  const guardBlock = render.slice(render.indexOf("typeof s.behind !== 'number'"), headlineAt);
+  assert.match(guardBlock, /return;/, 'the guard does not return, so rendering continues');
+  assert.equal(/behind = s\.behind \?\? 0/.test(render), false,
+    'behind still defaults to 0, which reads a broken status as current');
+});
+
+test('a pending gateway restart is surfaced', () => {
+  // A merge that landed but never reached the running process is the one state a
+  // green "up to date" actively misleads about: the checkout IS current and the
+  // gateway is not. The cron cannot restart it (#30719), so this line is the
+  // only thing that tells anyone to.
+  // Anchored on the CONDITION, not on any mention of the field: the warning text
+  // also interpolates s.restart_pending, so a plain match stayed green when the
+  // condition itself was replaced by a constant — this test MISSED that mutation
+  // until it named the branch.
+  assert.match(markup, /\(\s*s\.restart_pending\s*$/m,
+    'the restart warning is not conditional on restart_pending');
+  assert.match(markup, /gateway still runs/i);
+  // And the commit has to reach the operator, not just the branch.
+  assert.match(markup, /esc\(String\(s\.restart_pending\)/,
+    'the pending commit is not shown, so the warning cannot be acted on');
+});
+
+test('a second sync cannot start while one is running', () => {
+  // Refresh deliberately stays clickable during a long merge, and refresh
+  // re-enables the action buttons from the server's status — which would let a
+  // second sync-fork start on top of the running one, two processes merging into
+  // the same checkout.
+  assert.match(markup, /let busy = false/, 'no in-flight flag');
+  const at = markup.indexOf('async function act(');
+  const act = markup.slice(at, markup.indexOf('\n  }', at));
+  assert.match(act, /if \(busy\) return/, 'act() does not refuse a concurrent run');
+
+  // ENUMERATE both action buttons rather than matching the substring once: the
+  // guard appears twice (dry and sync), so a single match stays green when only
+  // one of them loses it — verified by mutation, which this test first MISSED.
+  const guarded = [...markup.matchAll(/\$\('(dry|sync)'\)\.disabled = ([^;]+);/g)]
+    .map((m) => [m[1], m[2].trim()]);
+  const inRender = guarded.filter(([, expr]) => expr.includes('actionable'));
+  assert.equal(inRender.length, 2,
+    `render() must set both action buttons from actionable, found ${inRender.length}`);
+  for (const [id, expr] of inRender) {
+    assert.ok(expr.includes('busy'),
+      `${id} is re-enabled from status alone (${expr}) — a refresh mid-merge would ` +
+      'offer a second sync while the first is still running');
+  }
+});
+
+test('requests cannot hang forever', () => {
+  // A request that never settles leaves the panel frozen with no way back.
+  assert.match(markup, /AbortController/, 'no request timeout');
+  assert.match(markup, /signal: ac\.signal/, 'the abort signal is not passed to fetch');
+  assert.match(markup, /timed out waiting for/, 'a timeout is not reported as one');
+});
+
+test('a failed status refresh disarms the confirm row', () => {
+  // An armed confirm row outlives the status it was armed against, so "Merge
+  // now" could be pressed against a reading the panel has just admitted it
+  // cannot make.
+  const at = markup.indexOf('async function refresh(');
+  assert.ok(at > -1, 'refresh() not found');
+  const refresh = markup.slice(at, markup.indexOf('\n  }', at));
+  assert.match(refresh, /hideConfirm\(\)/,
+    'the error path leaves the confirm row armed against an unknown status');
+});
