@@ -83,6 +83,13 @@
   .state-word { font-size:var(--t-small); text-transform:uppercase;
                 letter-spacing:.08em; opacity:.9; }
 
+  /* The one self-referential fact rule 2 allows: this panel's own last read.
+     Nothing else on screen can report it, and without it a commit count has no
+     age. Dropped below 420px, where the row would wrap — the sibling console
+     makes the same trade at its own narrow width. */
+  .checked { font-size:var(--t-small); color:var(--muted); margin:6px 0 0; }
+  @media (max-width: 420px) { .checked { display:none; } }
+
   .facts { display:grid; grid-template-columns:auto 1fr; gap:1px 16px;
            margin:12px 0 0; font-variant-numeric:tabular-nums;
            font-size:var(--t-small); }
@@ -103,6 +110,12 @@
      before the disabled rule, because a painted-but-inert commit button
      out-shouts the one control that still works (caught in the render, not the
      source). */
+  /* Only ONE filled control may be visible (DESIGN.md §4). While the confirm
+     row is up, Merge now is the committing button, so the trigger that
+     armed it steps back to an outline. */
+  body.armed button#sync,
+  body:has(#confirm:not([hidden])) button#sync { background:transparent;
+                  border-color:var(--line-strong); color:var(--muted); font-weight:400; }
   button.commit:not(:disabled) { background:var(--bad-text); border-color:var(--bad-text);
                   color:var(--host-bg, #0a0a0c); font-weight:600; }
   button.commit:hover:not(:disabled) { filter:brightness(1.08); }
@@ -118,6 +131,15 @@
              font-size:var(--t-small); }
   .detail { font-family:var(--mono); font-size:var(--t-small); color:var(--muted);
             margin:8px 0 0; white-space:pre-wrap; }
+  /* Narrow viewport: the host's drawer can put this panel at ~360px. Buttons
+     keep their 44px target and go full-width rather than shrinking below it,
+     which is what breaks a thumb target first. */
+  @media (max-width: 420px) {
+    body { padding:16px 16px; }
+    .row { gap:8px; }
+    .row button { flex:1 1 100%; }
+    .confirm .row button { flex:1 1 auto; }
+  }
   [hidden] { display:none; }
 </style></head><body>
   <h1>Fork Keeper</h1>
@@ -179,6 +201,8 @@
     if (ahead) facts.push(['local commits', ahead + ' not upstream']);
     facts.push(['worktree', s.dirty ? 'uncommitted changes' : 'clean']);
 
+    const clock = (d) => String(d.getHours()).padStart(2, '0') + ':' +
+                         String(d.getMinutes()).padStart(2, '0');
     state.innerHTML =
       '<p class="headline ' + tone + '">' + esc(headline) +
       ' <span class="state-word">' + esc(word) + '</span></p>' +
@@ -188,14 +212,15 @@
       (s.dirty
         ? '<p class="note">Sync will not run while the worktree is dirty. An update ' +
           'must never decide what happens to unsaved work.</p>'
-        : '');
+        : '') +
+      '<p class="checked">checked ' + clock(new Date()) + '</p>';
 
     $('dry').disabled = !actionable;
     $('sync').disabled = !actionable;
     if (!actionable) hideConfirm();
   }
 
-  function hideConfirm() { confirm.hidden = true; }
+  function hideConfirm() { confirm.hidden = true; document.body.classList.remove('armed'); }
 
   function arm() {
     const s = current || {};
@@ -206,6 +231,7 @@
       (risky ? ', ' + risky + ' of which touch files this fork also changed' : '') +
       '. On conflict the fork is restored and nothing is left half-merged.';
     confirm.hidden = false;
+    document.body.classList.add('armed');
     $('go').focus();
   }
 
