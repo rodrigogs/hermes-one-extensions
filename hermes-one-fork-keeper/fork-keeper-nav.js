@@ -19,7 +19,15 @@
    * sidecar consoles send X-Frame-Options: DENY.
    */
   const PANEL_ID = 'fork-keeper-panel';
-  const TOKEN = 'x-fork-keeper';
+  /*
+   * The BARE token, with no `x-` prefix. The kit adds that prefix itself when it
+   * builds its class and attribute names (`showing-x-${token}`, `data-panel` of
+   * `x-${token}`), so passing `x-fork-keeper` produced `showing-x-x-fork-keeper`
+   * on <main> while the reveal logic looked for the single-prefixed form —
+   * observed in the live DOM. The router and fact-explorer panels pass `router`
+   * and `memory` for the same reason.
+   */
+  const TOKEN = 'fork-keeper';
   const ICON = '<path d="M6 3v12"/><circle cx="18" cy="6" r="3"/>'
     + '<circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>';
 
@@ -402,19 +410,36 @@
   }
 
   function mount() {
-    const host = document.querySelector('.main-view') || document.body;
     let panel = document.getElementById(PANEL_ID);
     if (panel) return panel;
 
-    panel = document.createElement('div');
+    /*
+     * A sibling `main > section.main-view`, exactly like the router and
+     * fact-explorer panels. Three details are load-bearing, and getting each of
+     * them wrong is why this panel mounted, fetched its status correctly, and
+     * still rendered nothing:
+     *
+     * 1. `main-view` in the class list. The kit's show() reveals panels by
+     *    toggling `hidden` on `main > .main-view[data-panel-token]`. Without that
+     *    class the selector never matches, so the panel it adopted is never
+     *    un-hidden — measured: the iframe had loaded and showed the real status,
+     *    while the container stayed hidden.
+     * 2. A SIBLING of the host's views, not a child of one. Appending into
+     *    `.main-view` put this panel inside a container the host hides by its own
+     *    CSS, so it inherited that invisibility no matter what show() did.
+     * 3. No `display:none` in inline style. Inline style beats the stylesheet, so
+     *    the kit clearing `hidden` could never make it visible again. Visibility
+     *    is the kit's to own via `hidden`; adopt() sets that on registration.
+     */
+    panel = document.createElement('section');
     panel.id = PANEL_ID;
-    panel.style.cssText = 'position:absolute;inset:0;display:none;';
+    panel.className = 'main-view hermes-panel hermes-one-fork-keeper-panel';
     const frame = document.createElement('iframe');
     frame.style.cssText = 'width:100%;height:100%;border:0;background:transparent;';
     frame.setAttribute('title', 'Fork Keeper');
     frame.srcdoc = panelHtml();
     panel.appendChild(frame);
-    host.appendChild(panel);
+    (document.querySelector('main') || document.body).appendChild(panel);
     return panel;
   }
 
@@ -431,7 +456,24 @@
       token: TOKEN,
       label: 'Fork Keeper',
       iconPath: ICON,
-      onOpen: () => { handle.adopt(mount()); },
+      /*
+       * adopt THEN show, in that order.
+       *
+       * The panel element does not exist at register() time, so the first open is
+       * what creates and tags it. By then the kit has already run its reveal pass
+       * for this token — and adopt() deliberately sets `hidden = true` on the
+       * element it adopts, per the host's pattern. The result was a panel that
+       * mounted, fetched its status and rendered it correctly while staying
+       * invisible: measured `hidden: true, display: none, offsetHeight: 0` with
+       * the iframe inside showing "18 commits behind upstream".
+       *
+       * Re-showing is idempotent, so paying for it on every open is harmless. The
+       * capability-router panel does the same, for the same reason.
+       */
+      onOpen: () => {
+        handle.adopt(mount());
+        handle.show();
+      },
     });
   }
 
