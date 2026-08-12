@@ -121,7 +121,10 @@ test('arming the confirm row de-emphasises the trigger', () => {
 test('the error path renders one muted line, not a framed box', () => {
   // Defect 3. The frame belonged to a .state card that no longer exists; the
   // failure state must be a single quiet line.
-  assert.ok(markup.includes("state.innerHTML = '<p class=\"note\">Status unavailable"),
+  // Asserted on the OUTCOME, not on the mechanism: the panel builds its DOM with
+  // createElement now, so a test that pinned an innerHTML string was pinning how
+  // the line is produced rather than that it is a single quiet line.
+  assert.match(markup, /'note', 'Status unavailable/,
     'error path does not render as a plain note line');
   assert.equal(/class="state[ "]/.test(markup), false,
     'a framed .state container is back on the error path');
@@ -129,10 +132,16 @@ test('the error path renders one muted line, not a framed box', () => {
 
 test('state is signalled by a word as well as a colour', () => {
   // Defect 4. DESIGN.md §3: colour is never the only channel.
-  assert.ok(markup.includes('class="state-word"'));
-  for (const word of ['Current', 'Behind', 'Blocked']) {
+  // The word now lives in the masthead pill rather than inline in the headline,
+  // so the channel is the same and the carrier changed. What matters is that a
+  // word accompanies the colour for every state.
+  assert.match(markup, /id="pill"/, 'no state pill in the masthead');
+  for (const word of ['current', 'behind', 'blocked', 'unknown']) {
     assert.ok(markup.includes(`'${word}'`), `state word ${word} missing`);
   }
+  // Colour alone must never be the signal: the pill's tone classes exist, but the
+  // word is set on the same call.
+  assert.match(markup, /setPill\(/, 'nothing sets the state word');
 });
 
 test('the destructive action is armed, never fired by one click', () => {
@@ -207,14 +216,17 @@ test('buttons meet the 44px target and narrow viewports are handled', () => {
 test('the panel reports its own last read, and drops it when narrow', () => {
   // The one self-referential fact DESIGN.md rule 2 allows: nothing else on
   // screen can say when THIS panel last looked.
-  assert.ok(markup.includes("'<p class=\"checked\">checked '"));
+  assert.match(markup, /'checked', 'checked '/, 'the panel does not report its own last read');
   assert.match(markup, /@media \(max-width: 420px\) \{ \.checked \{ display:none; \} \}/);
 });
 
 test('the panel never runs git itself', () => {
   // The merge policy lives in one place — hermes sync-fork — shared by the CLI,
   // the cron job and this panel. A second copy here would drift.
-  for (const forbidden of ['child_process', 'exec(', 'spawn(']) {
+  // `exec(` is deliberately NOT in this list: RegExp.prototype.exec is used to
+  // read cron schedule expressions, and banning the substring flagged that as
+  // shelling out. The hazard is a child process, so name the child-process API.
+  for (const forbidden of ['child_process', 'spawn(', 'execFile', 'execSync']) {
     assert.equal(source.includes(forbidden), false, `panel reaches for ${forbidden}`);
   }
   for (const route of ['/api/fork-keeper/', 'status', 'dry-run', 'sync']) {
@@ -225,9 +237,15 @@ test('the panel never runs git itself', () => {
 test('interpolated values are escaped before reaching innerHTML', () => {
   // Reasons and file paths come from a subprocess boundary; unescaped they are
   // an injection into the panel's own markup.
-  assert.ok(markup.includes('const esc = (s) =>'));
-  assert.match(markup, /esc\(reason/);
-  assert.match(markup, /esc\(f\)/);
+  // The panel no longer escapes-then-concatenates: it builds nodes and sets
+  // textContent, which is what DESIGN.md §8 requires ("no innerHTML on any path
+  // that can carry stored data"). Conflicted paths and a cron's reason string both
+  // originate upstream, so this is the stronger guarantee, not a weaker one.
+  assert.match(markup, /node\.textContent = String\(text\)/, 'no textContent-based builder');
+  assert.equal(/\.innerHTML\s*=/.test(markup), false,
+    'an innerHTML assignment is back on a path that can carry stored data');
+  assert.equal(markup.includes('const esc = ('), false,
+    'the hand-rolled escaper is back; textContent makes it unnecessary');
 });
 
 test('unsafe requests carry the host CSRF token', () => {
@@ -287,11 +305,14 @@ test('a pending gateway restart is surfaced', () => {
   // also interpolates s.restart_pending, so a plain match stayed green when the
   // condition itself was replaced by a constant — this test MISSED that mutation
   // until it named the branch.
-  assert.match(markup, /\(\s*s\.restart_pending\s*$/m,
-    'the restart warning is not conditional on restart_pending');
-  assert.match(markup, /gateway still runs/i);
+  // Conditional on the field, so replacing the condition with a constant fails.
+  assert.match(markup, /const pending = o && o\.restart_pending/,
+    'the restart notice is not driven by restart_pending');
+  assert.match(markup, /if \(!pending\) \{ box\.hidden = true; return; \}/,
+    'the notice shows even when nothing is pending');
+  assert.match(markup, /older than this checkout/i);
   // And the commit has to reach the operator, not just the branch.
-  assert.match(markup, /esc\(String\(s\.restart_pending\)/,
+  assert.match(markup, /short\(pending\)/,
     'the pending commit is not shown, so the warning cannot be acted on');
 });
 
@@ -373,8 +394,12 @@ test('a failed status refresh disarms the confirm row', () => {
   // An armed confirm row outlives the status it was armed against, so "Merge
   // now" could be pressed against a reading the panel has just admitted it
   // cannot make.
-  const at = markup.indexOf('async function refresh(');
-  assert.ok(at > -1, 'refresh() not found');
+  // Named reload(), not refresh(): `refresh` is also an element id, and a DOM id
+  // becomes a window property that beats a function declaration for elements that
+  // exist before the script runs — the first call threw "refresh is not a
+  // function". The id stays; ours was renamed.
+  const at = markup.indexOf('async function reload(');
+  assert.ok(at > -1, 'reload() not found');
   const refresh = markup.slice(at, markup.indexOf('\n  }', at));
   assert.match(refresh, /hideConfirm\(\)/,
     'the error path leaves the confirm row armed against an unknown status');

@@ -80,7 +80,23 @@
 
   body { margin:0; padding:20px 22px; background:transparent; color:var(--text);
          font:var(--t-body)/1.55 var(--sans); }
-  h1 { font-size:var(--t-head); font-weight:600; letter-spacing:-.18px; margin:0 0 14px; }
+  /* One masthead, 44px, per DESIGN.md §2: mono caps wordmark left, live state
+     right. No subtitle — "keep this fork current" only restates the title. */
+  .masthead { display:flex; align-items:center; justify-content:space-between;
+              gap:16px; min-height:44px; margin:0 0 6px;
+              border-bottom:1px solid var(--line); }
+  h1 { font:var(--t-label)/1 var(--mono); letter-spacing:.11em; text-transform:uppercase;
+       font-weight:600; color:var(--muted); margin:0; }
+
+  /* The live-state pill. Colour is the only thing carrying state here, and it
+     obeys the four-hue table — greyscale while the first read is in flight,
+     because "checking" is not a health claim. */
+  .pill { font:var(--t-label)/1 var(--mono); letter-spacing:.09em; text-transform:uppercase;
+          padding:5px 10px; border-radius:999px; border:1px solid var(--line-strong);
+          color:var(--muted); white-space:nowrap; }
+  .pill.ok   { color:var(--ok-text);   border-color:var(--ok-text); }
+  .pill.warn { color:var(--warn-text); border-color:var(--warn-text); }
+  .pill.bad  { color:var(--bad-text);  border-color:var(--bad-text); }
 
   /* The question is answered in the first line. No card: one status block and
      one control row do not need a frame. */
@@ -149,11 +165,52 @@
     .confirm .row button { flex:1 1 auto; }
   }
   [hidden] { display:none; }
+
+  /* Rows: a label column and a value column, separated by hairlines. No cards,
+     no nesting — structure is space and 1px lines (DESIGN.md §4). */
+  .group { margin:30px 0 0; }
+  .group > h2 { font:var(--t-label)/1 var(--mono); letter-spacing:.09em;
+                text-transform:uppercase; color:var(--muted); font-weight:500;
+                margin:0 0 11px; }
+  .rows { display:grid; grid-template-columns:auto 1fr; gap:0 18px; }
+  .rows > dt, .rows > dd { padding:7px 0; border-top:1px solid var(--line);
+                           margin:0; font-size:var(--t-small); }
+  .rows > dt { color:var(--muted); }
+  .rows > dd { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+  .rows > dt:first-of-type, .rows > dt:first-of-type + dd { border-top:0; }
+  .sub { display:block; color:var(--muted); font-size:var(--t-small);
+         font-family:var(--sans); margin-top:2px; }
+
+  /* The pending-restart notice. --warn, because it is a state of the install
+     that needs attention, not a failure. */
+  .alert { margin:30px 0 0; padding-left:12px; border-left:1px solid var(--warn-text);
+           max-width:68ch; }
+  .alert p { margin:0; font-size:var(--t-small); }
+  .alert .what { color:var(--warn-text); font-weight:600; }
+  .alert .row { margin:11px 0 0; }
+
+  /* History: one line per run, tabular so the columns line up. */
+  .runs { display:grid; grid-template-columns:auto auto 1fr; gap:0 16px; }
+  .runs > * { padding:6px 0; border-top:1px solid var(--line); font-size:var(--t-small);
+              font-family:var(--mono); font-variant-numeric:tabular-nums; }
+  .runs > :nth-child(-n+3) { border-top:0; }
+  .runs .job { color:var(--muted); }
+  .runs .ok { color:var(--ok-text); }
+  .runs .bad { color:var(--bad-text); }
 </style></head><body>
-  <h1>Fork Keeper</h1>
+  <!--
+    One masthead, then facts. No subtitle: "keep this fork current" restates the
+    title, and DESIGN.md §2 forbids a subtitle that carries no fact the title
+    cannot imply. The live state sits on the right of the bar, where every other
+    panel puts it.
+  -->
+  <header class="masthead">
+    <h1>Fork Keeper</h1>
+    <span id="pill" class="pill">checking</span>
+  </header>
 
   <div id="state" role="status" aria-live="polite">
-    <p class="headline">Checking…</p>
+    <p class="headline">Reading the fork's position…</p>
   </div>
 
   <div class="row">
@@ -172,159 +229,337 @@
 
   <div id="result" class="result" role="status" aria-live="polite"></div>
 
+  <section id="plan" class="group" hidden>
+    <h2>Merge plan</h2>
+    <dl id="plan-rows" class="rows"></dl>
+  </section>
+
+  <section id="jobs" class="group" hidden>
+    <h2>Scheduled</h2>
+    <dl id="jobs-rows" class="rows"></dl>
+  </section>
+
+  <div id="alert" class="alert" hidden>
+    <p><span class="what">Gateway is older than this checkout.</span></p>
+    <p id="alert-detail" class="sub"></p>
+    <div class="row">
+      <button id="restart" class="commit">Restart gateway</button>
+    </div>
+    <p id="restart-confirm" class="sub" hidden></p>
+    <div id="restart-row" class="row" hidden>
+      <button id="restart-go" class="commit">Restart now</button>
+      <button id="restart-cancel">Cancel</button>
+    </div>
+  </div>
+
+  <section id="history" class="group" hidden>
+    <h2>Recent runs</h2>
+    <div id="history-rows" class="runs"></div>
+  </section>
+
 <script>
   const $ = (id) => document.getElementById(id);
-  const state = $('state'), result = $('result'), confirm = $('confirm');
+  const stateEl = $('state'), result = $('result'), confirm = $('confirm');
   let current = null;
+  let busy = false;
 
-  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  /*
+   * Everything reaches the DOM through textContent.
+   *
+   * DESIGN.md §8: "no innerHTML on any path that can carry stored data". This
+   * panel carries conflicted file paths and a cron's reason string, both of
+   * which originate upstream — attacker-influenceable by the same argument that
+   * applies to fact text. The previous version escaped with a hand-rolled
+   * three-character replace and assembled markup by concatenation; el() removes
+   * the whole class of mistake instead of guarding each site.
+   */
+  function el(tag, cls, text) {
+    const node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text !== undefined && text !== null) node.textContent = String(text);
+    return node;
+  }
 
-  // The WebUI injects its CSRF token by monkey-patching window.fetch, but only
-  // in documents it renders itself. This panel runs in an iframe srcdoc, which
-  // has its OWN window, so the patched fetch is not here and an unsafe request
-  // arrives with an Origin (srcdoc inherits it) and no token — which the server
-  // rejects with 403. Verified by running the real _check_csrf against this
-  // request shape: token_mismatch. Both action buttons were dead in production.
-  //
-  // The parent document IS a page the WebUI rendered, so its patched fetch has
-  // the token. Borrowing it is the same fix hermes-one-capability-router uses
-  // ("borrows the host's token via window.parent"), and it keeps the token out
-  // of this frame entirely — we never read it, we just let the parent send.
+  function clear(node) {
+    while (node.firstChild) node.removeChild(node.firstChild);
+    return node;
+  }
+
+  /* A label/value pair, with an optional second line of context under the value.
+     The sub-line is where a count gets its window (DESIGN.md §5: "a count
+     without its window is a lie"). */
+  function addRow(list, label, value, sub) {
+    list.append(el('dt', null, label));
+    const dd = el('dd', null, value);
+    if (sub) dd.append(el('span', 'sub', sub));
+    list.append(dd);
+  }
+
+  const short = (sha) => (typeof sha === 'string' ? sha.slice(0, 9) : '');
+
+  function when(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const day = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+    const time = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    return day + ' ' + time;
+  }
+
+  /* Relative age, because "11 Aug 18:51" alone does not answer "is this stale".
+     Reported in the largest unit that is still honest. */
+  function ago(iso) {
+    if (!iso) return '';
+    const then = new Date(iso).getTime();
+    if (Number.isNaN(then)) return '';
+    const mins = Math.round((Date.now() - then) / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    const hours = Math.round(mins / 60);
+    if (hours < 48) return hours + 'h ago';
+    return Math.round(hours / 24) + 'd ago';
+  }
+
+  /*
+   * The next run, computed here rather than trusted from the registry.
+   *
+   * jobs.json carries the schedule but leaves next_run empty on this install
+   * (measured), so the honest options are to compute it or to say "unknown".
+   * Computed only for the two shapes the fork-keeper jobs actually use: a fixed
+   * daily time, and a fixed interval from the last run. Anything else returns ''
+   * and the row says the schedule without inventing a time.
+   */
+  function nextRun(job) {
+    if (!job) return '';
+    if (job.next_run) return when(job.next_run);
+    const sched = String(job.schedule || '');
+    const daily = /^(\\d+)\\s+(\\d+)\\s+\\*\\s+\\*\\s+\\*$/.exec(sched);
+    if (daily) {
+      const [, min, hour] = daily;
+      const next = new Date();
+      next.setSeconds(0, 0);
+      next.setHours(Number(hour), Number(min), 0, 0);
+      if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
+      return when(next.toISOString());
+    }
+    const every = /every\\s+(\\d+)m/.exec(sched);
+    if (every && job.last_run) {
+      const base = new Date(job.last_run).getTime();
+      if (!Number.isNaN(base)) {
+        return when(new Date(base + Number(every[1]) * 60000).toISOString());
+      }
+    }
+    return '';
+  }
+
+  /* Human wording for a schedule expression. An operator reads "every 48h", not
+     "every 2880m", and "0 9 * * *" is not a sentence. */
+  function scheduleText(sched) {
+    const s = String(sched || '');
+    const every = /every\\s+(\\d+)m/.exec(s);
+    if (every) {
+      const mins = Number(every[1]);
+      if (mins % 1440 === 0) return 'every ' + (mins / 1440) + 'd';
+      if (mins % 60 === 0) return 'every ' + (mins / 60) + 'h';
+      return 'every ' + mins + 'm';
+    }
+    const daily = /^(\\d+)\\s+(\\d+)\\s+\\*\\s+\\*\\s+\\*$/.exec(s);
+    if (daily) {
+      return 'daily at ' + String(daily[2]).padStart(2, '0') + ':' + String(daily[1]).padStart(2, '0');
+    }
+    return s;
+  }
+
+  // The ACP-style borrow: the WebUI injects its CSRF token by patching
+  // window.fetch, but only in documents it renders itself. This panel is an
+  // iframe srcdoc with its own window, so the patched fetch is absent and an
+  // unsafe request would arrive with an Origin and no token — a 403. The parent
+  // IS a page the WebUI rendered, so borrowing its fetch is what makes the
+  // action buttons work, and keeps the token out of this frame entirely.
   const hostFetch = (() => {
     try {
       if (window.parent && window.parent !== window && window.parent.fetch) {
         return window.parent.fetch.bind(window.parent);
       }
-    } catch (_) {
-      // Cross-origin parent: nothing to borrow. Same-origin is the only case
-      // this panel is mounted in, so fall through rather than guess.
-    }
+    } catch (_) { /* cross-origin parent: nothing to borrow */ }
     return window.fetch.bind(window);
   })();
 
-  // The panel never runs git. It asks the webui, which runs the same
-  // 'hermes sync-fork' the CLI and the cron job run, so all three surfaces
-  // agree by construction rather than by three copies of the same logic.
-  async function call(action) {
-    // A merge can take many minutes on a large backlog, but a request that
-    // never settles leaves the UI frozen with no way back. 15 minutes matches
-    // the bridge's own sync timeout so the panel does not give up on a merge
-    // the server is still doing.
+  async function call(action, method) {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), action === 'status' ? 30000 : 915000);
-    let res;
+    const slow = action === 'sync' || action === 'dry-run';
+    const timer = setTimeout(() => ac.abort(), slow ? 915000 : 30000);
     try {
-      res = await hostFetch('/api/fork-keeper/' + action, {
-        method: action === 'status' ? 'GET' : 'POST',
+      const res = await hostFetch('/api/fork-keeper/' + action, {
+        method: method || (slow || action === 'restart-gateway' ? 'POST' : 'GET'),
         headers: { 'Accept': 'application/json' },
         credentials: 'same-origin',
         signal: ac.signal,
       });
-      // The timer deliberately keeps running past this point. fetch() settles as
-      // soon as the response HEADERS arrive, so clearing the timeout here left
-      // res.json() — which waits for the whole BODY — with no deadline at all: a
-      // server that sends headers and then stalls froze the panel permanently,
-      // the exact failure the timeout exists to prevent. It is cleared in the
-      // outer finally, after the body has been read.
-      const body = await readBody(res);
+      // The timer deliberately spans the body read: fetch settles at the response
+      // HEADERS, so clearing it here would leave res.json() with no deadline and
+      // a server that stalls mid-body would freeze the panel.
+      let body = null;
+      try { body = await res.json(); } catch (err) {
+        if (err && err.name === 'AbortError') throw err;
+      }
       if (!res.ok) {
-        // Read the body even on a non-2xx: the bridge answers 400 (the upstream
-        // ref does not resolve), 502 (unparsable CLI output) and 504 (timeout)
-        // with an explanation in "error" or "reason". Throwing on the status
-        // alone reduced every one of those to "HTTP 400", which tells the
-        // operator nothing about what to fix.
         const why = body && (body.error || body.reason);
-        throw new Error(why ? String(why)
-                            : 'HTTP ' + res.status + ' from /api/fork-keeper/' + action);
+        throw new Error(why ? String(why) : 'HTTP ' + res.status + ' from ' + action);
       }
-      if (!body || typeof body !== 'object') {
-        throw new Error('unreadable response from /api/fork-keeper/' + action);
-      }
+      if (!body || typeof body !== 'object') throw new Error('unreadable response from ' + action);
       return body;
     } catch (err) {
-      if (err && err.name === 'AbortError') {
-        throw new Error('timed out waiting for /api/fork-keeper/' + action);
-      }
+      if (err && err.name === 'AbortError') throw new Error('timed out waiting for ' + action);
       throw err;
     } finally {
       clearTimeout(timer);
     }
   }
 
-  async function readBody(res) {
-    try {
-      return await res.json();
-    } catch (err) {
-      // An abort mid-body must stay an abort, so call()'s handler can name it a
-      // timeout rather than reporting "unreadable response".
-      if (err && err.name === 'AbortError') throw err;
-      return null;
-    }
+  function setPill(word, tone) {
+    const pill = $('pill');
+    pill.textContent = word;
+    pill.className = 'pill' + (tone ? ' ' + tone : '');
   }
 
-  function render(s) {
+  function render(o) {
+    const s = (o && o.status) || {};
     current = s;
 
-    // Defaulting behind to 0 turned every payload WITHOUT a numeric behind into green
-    // "Up to date with upstream / Current" — including the bridge's own error
-    // objects ({error: ...}, 502, 503). Fabricating health out of a failed read
-    // is the one thing this panel must never do: the operator would stop looking
-    // exactly when something is wrong. An unusable status is stated as unknown.
+    /*
+     * A status without a numeric commit count is NOT health.
+     *
+     * Defaulting behind to 0 rendered every unreadable payload — including the
+     * bridge's own error objects — as a green "Up to date". DESIGN.md §5:
+     * absence has three meanings and a surface must say which. This says
+     * "unknown" and names the reason.
+     */
     if (typeof s.behind !== 'number' || !Number.isFinite(s.behind)) {
-      const why = s.error ? String(s.error) : 'the status response had no commit count';
-      state.innerHTML =
-        '<p class="headline warn">Status unknown' +
-        ' <span class="state-word">Unknown</span></p>' +
-        '<p class="note">' + esc(why) + '</p>';
+      setPill('unknown', 'warn');
+      clear(stateEl).append(
+        el('p', 'headline warn', 'Position unknown'),
+        el('p', 'note', s.error ? String(s.error)
+          : 'The status response carried no commit count, so this panel cannot say how far behind the fork is.'),
+      );
       $('dry').disabled = true;
       $('sync').disabled = true;
       hideConfirm();
+      renderJobs(o);
+      renderHistory(o);
+      renderAlert(o);
       return;
     }
 
-    const behind = s.behind, ahead = s.ahead ?? 0;
+    const behind = s.behind;
+    const ahead = s.ahead ?? 0;
     const actionable = behind > 0 && !s.dirty;
     const tone = behind === 0 ? 'ok' : 'warn';
-    const word = behind === 0 ? 'Current' : (s.dirty ? 'Blocked' : 'Behind');
+    setPill(behind === 0 ? 'current' : (s.dirty ? 'blocked' : 'behind'), tone);
 
     const headline = behind === 0
       ? 'Up to date with upstream'
       : behind + ' commit' + (behind === 1 ? '' : 's') + ' behind upstream';
 
-    // Only facts that carry a signal. Merge-step counts are diagnostics about
-    // this panel's own algorithm, not about the fork, so they stay out of the
-    // primary read and appear in the confirm step where they inform a decision.
-    const facts = [];
-    if (ahead) facts.push(['local commits', ahead + ' not upstream']);
-    facts.push(['worktree', s.dirty ? 'uncommitted changes' : 'clean']);
+    clear(stateEl);
+    stateEl.append(el('p', 'headline ' + tone, headline));
 
-    const clock = (d) => String(d.getHours()).padStart(2, '0') + ':' +
-                         String(d.getMinutes()).padStart(2, '0');
-    state.innerHTML =
-      '<p class="headline ' + tone + '">' + esc(headline) +
-      ' <span class="state-word">' + esc(word) + '</span></p>' +
-      '<dl class="facts">' +
-      facts.map(([k, v]) => '<dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd>').join('') +
-      '</dl>' +
-      (s.dirty
-        ? '<p class="note">Sync will not run while the worktree is dirty. An update ' +
-          'must never decide what happens to unsaved work.</p>'
-        : '') +
-      // A merge that landed but never reached the running process is the one
-      // state a green "Up to date" actively misleads about: the checkout IS
-      // current and the gateway is not. The cron cannot restart it (#30719), so
-      // this line is the only thing that tells the operator to.
-      (s.restart_pending
-        ? '<p class="note">Merged code is on disk but the gateway still runs the ' +
-          'older build — restart it to pick up ' + esc(String(s.restart_pending).slice(0, 9)) + '.</p>'
-        : '') +
-      '<p class="checked">checked ' + clock(new Date()) + '</p>';
+    // The one line the headline cannot imply: divergence is what makes this panel
+    // exist at all, because hermes update skips a fork that has local commits.
+    if (ahead) {
+      stateEl.append(el('p', 'note',
+        ahead + ' local commit' + (ahead === 1 ? '' : 's') + ' upstream does not have — '
+        + 'which is why hermes update skips this fork: its sync is fast-forward only.'));
+    }
+    if (s.dirty) {
+      stateEl.append(el('p', 'note',
+        'The worktree has uncommitted changes. Sync will refuse until it is clean — '
+        + 'an update must never decide what happens to unsaved work.'));
+    }
+    stateEl.append(el('p', 'checked', 'checked ' + when(new Date().toISOString())));
 
-    // The busy flag wins: a refresh landing mid-merge must not hand the operator a
-    // second Sync button while the first merge is still running.
     $('dry').disabled = !actionable || busy;
     $('sync').disabled = !actionable || busy;
     if (!actionable) hideConfirm();
+
+    renderPlan(s);
+    renderJobs(o);
+    renderAlert(o);
+    renderHistory(o);
+  }
+
+  function renderPlan(s) {
+    const section = $('plan');
+    // No plan to show when there is nothing to merge: an empty section is noise,
+    // and "0 steps" is not a finding.
+    if (!s.behind) { section.hidden = true; return; }
+    section.hidden = false;
+    const rows = clear($('plan-rows'));
+    const steps = s.steps ?? 0;
+    addRow(rows, 'Steps', steps + (steps === 1 ? ' step' : ' steps'),
+      'the merge stops at each upstream commit that touches a file this fork changed, so a conflict names one commit');
+    const risky = s.conflict_prone ?? 0;
+    addRow(rows, 'Can conflict',
+      risky === 0 ? 'none' : risky + ' of ' + steps,
+      risky === 0 ? 'no upstream commit touches a file this fork changed' : undefined);
+  }
+
+  function renderJobs(o) {
+    const section = $('jobs');
+    const sync = (o && o.sync) || {};
+    const prs = (o && o.prs) || {};
+    if (!sync.name && !prs.name) { section.hidden = true; return; }
+    section.hidden = false;
+    const rows = clear($('jobs-rows'));
+
+    const describe = (job, label, verb) => {
+      if (!job || !job.name) return;
+      const last = job.last_run
+        ? when(job.last_run) + ' · ' + ago(job.last_run)
+        : 'never run';
+      const outcome = job.result
+        ? (job.result === 'synced'
+            ? verb + ' ' + (job.behind ?? '?') + ' commit' + (job.behind === 1 ? '' : 's')
+            : job.result.replace(/_/g, ' '))
+        : (job.rebased !== undefined
+            ? job.rebased + ' rebased, ' + (job.failed ?? 0) + ' needing attention'
+            : undefined);
+      addRow(rows, label, last, outcome);
+      const next = nextRun(job);
+      addRow(rows, '', next ? next : 'next run unknown',
+        scheduleText(job.schedule) + (job.enabled === false ? ' · paused' : ''));
+    };
+
+    describe(sync, 'Upstream sync', 'merged');
+    describe(prs, 'Stuck PRs', 'rebased');
+  }
+
+  function renderAlert(o) {
+    const box = $('alert');
+    const pending = o && o.restart_pending;
+    // Only a real staleness shows this. The marker is written after a verified
+    // merge and cleared by whoever restarts, so its presence IS the finding.
+    if (!pending) { box.hidden = true; return; }
+    box.hidden = false;
+    $('alert-detail').textContent =
+      'The merge landed on disk but the running process predates it. Restart to pick up '
+      + short(pending) + '. The cron cannot do this itself — a scheduled job restarting '
+      + 'its own supervisor is the respawn loop Hermes blocks.';
+  }
+
+  function renderHistory(o) {
+    const section = $('history');
+    const runs = (o && o.history) || [];
+    if (!runs.length) { section.hidden = true; return; }
+    section.hidden = false;
+    const grid = clear($('history-rows'));
+    for (const run of runs.slice(0, 6)) {
+      const ok = run.status === 'completed';
+      grid.append(el('span', 'job', run.job === 'prs' ? 'prs' : 'sync'));
+      grid.append(el('span', ok ? 'ok' : 'bad', run.status || '?'));
+      const detail = when(run.started_at) + (run.error ? ' · ' + run.error : '');
+      grid.append(el('span', null, detail));
+    }
   }
 
   function hideConfirm() { confirm.hidden = true; document.body.classList.remove('armed'); }
@@ -333,42 +568,34 @@
     const s = current || {};
     const risky = s.conflict_prone ?? 0;
     $('confirm-text').textContent =
-      'Merge ' + (s.behind ?? 0) + ' upstream commit(s) into this checkout, in ' +
-      (s.steps ?? 0) + ' step(s)' +
-      (risky ? ', ' + risky + ' of which touch files this fork also changed' : '') +
-      '. On conflict the fork is restored and nothing is left half-merged.';
+      'Merge ' + (s.behind ?? 0) + ' upstream commit(s) into this checkout, in '
+      + (s.steps ?? 0) + ' step(s)'
+      + (risky ? ', ' + risky + ' of which touch files this fork also changed' : '')
+      + '. On conflict the fork is restored and nothing is left half-merged.';
     confirm.hidden = false;
     document.body.classList.add('armed');
     $('go').focus();
   }
 
   function show(ok, reason, conflicted) {
-    result.innerHTML =
-      '<p class="headline ' + (ok ? 'ok' : 'bad') + '">' +
-      (ok ? 'Merged' : 'Not merged') + '</p>' +
-      '<p class="detail">' + esc(reason || '') + '</p>' +
-      (conflicted && conflicted.length
-        ? '<ul class="files">' + conflicted.map((f) => '<li>' + esc(f) + '</li>').join('') + '</ul>'
-        : '');
+    clear(result);
+    result.append(el('p', 'headline ' + (ok ? 'ok' : 'bad'), ok ? 'Merged' : 'Not merged'));
+    if (reason) result.append(el('p', 'detail', reason));
+    if (conflicted && conflicted.length) {
+      const list = el('ul', 'files');
+      for (const f of conflicted) list.append(el('li', null, f));
+      result.append(list);
+    }
   }
 
-  // True while a dry-run or sync is in flight. Refresh deliberately stays
-  // clickable during a long merge, and refresh re-enables the action buttons
-  // from the server's status — which would let a second sync-fork start on top
-  // of the running one, two processes merging into the same checkout. This flag
-  // is what makes render() leave the buttons alone until the action finishes.
-  let busy = false;
-
-  async function refresh() {
-    try { render(await call('status')); }
-    catch (err) {
-      // A single muted line, not a framed void: a section with no data is
-      // absent or one quiet line, never an empty frame.
-      state.innerHTML = '<p class="note">Status unavailable — ' + esc(err.message || err) + '</p>';
-      $('dry').disabled = true; $('sync').disabled = true;
-      // An armed confirm row outlives the status it was armed against, so
-      // "Merge now" could be pressed against a reading the panel has just
-      // admitted it cannot make. Disarm.
+  async function reload() {
+    try {
+      render(await call('overview'));
+    } catch (err) {
+      setPill('unreachable', 'bad');
+      clear(stateEl).append(el('p', 'note', 'Status unavailable — ' + (err.message || err)));
+      $('dry').disabled = true;
+      $('sync').disabled = true;
       hideConfirm();
     }
   }
@@ -377,34 +604,69 @@
     if (busy) return;
     busy = true;
     hideConfirm();
-    // Refresh stays live: freezing every control during a long merge locks the
-    // operator out and yanks focus from under a screen reader.
-    $('dry').disabled = true; $('sync').disabled = true;
-    result.innerHTML = '<p class="detail">' + verb + '…</p>';
+    $('dry').disabled = true;
+    $('sync').disabled = true;
+    clear(result).append(el('p', 'detail', verb + '…'));
     try {
       const r = await call(action);
       show(r.ok, r.reason, r.conflicted);
     } catch (err) {
       show(false, String(err.message || err), null);
     } finally {
-      // finally, not a plain statement after the catch: show() writes innerHTML,
-      // so a throw from inside the catch block itself would skip the reset and
-      // leave busy stuck true — both action buttons dead for the life of the
-      // panel, with no error the operator can act on.
-      //
-      // Cleared BEFORE the refresh below, so the refresh that follows an action
-      // is the one allowed to re-enable the buttons.
+      // finally, not a statement after the catch: show() writes to the DOM, and a
+      // throw from inside the catch would leave busy stuck true — both action
+      // buttons dead for the life of the panel.
       busy = false;
     }
-    await refresh();
+    await reload();
   }
 
-  $('refresh').addEventListener('click', refresh);
+  async function restartGateway() {
+    $('restart-row').hidden = true;
+    $('restart').hidden = false;
+    clear(result).append(el('p', 'detail', 'Restarting the gateway…'));
+    try {
+      const r = await call('restart-gateway');
+      clear(result).append(
+        el('p', 'headline ' + (r.ok ? 'ok' : 'bad'), r.ok ? 'Gateway restarted' : 'Restart failed'),
+        el('p', 'detail', r.reason || ''),
+      );
+    } catch (err) {
+      clear(result).append(
+        el('p', 'headline bad', 'Restart failed'),
+        el('p', 'detail', String(err.message || err)),
+      );
+    }
+    await reload();
+  }
+
+  $('refresh').addEventListener('click', () => void reload());
   $('dry').addEventListener('click', () => act('dry-run', 'Planning'));
   $('sync').addEventListener('click', arm);
   $('go').addEventListener('click', () => act('sync', 'Merging upstream'));
   $('cancel').addEventListener('click', () => { hideConfirm(); $('sync').focus(); });
-  refresh();
+
+  // Restarting the gateway takes this interface down with it (the WebUI follows
+  // the gateway by PartOf), so it is armed like the merge rather than fired by
+  // one click.
+  $('restart').addEventListener('click', () => {
+    $('restart').hidden = true;
+    $('restart-confirm').hidden = false;
+    $('restart-confirm').textContent =
+      'This restarts the gateway, and this interface restarts with it — the page will '
+      + 'reconnect on its own.';
+    $('restart-row').hidden = false;
+    $('restart-go').focus();
+  });
+  $('restart-go').addEventListener('click', () => void restartGateway());
+  $('restart-cancel').addEventListener('click', () => {
+    $('restart-row').hidden = true;
+    $('restart-confirm').hidden = true;
+    $('restart').hidden = false;
+    $('restart').focus();
+  });
+
+  void reload();
 </script>
 </body></html>`;
   }
