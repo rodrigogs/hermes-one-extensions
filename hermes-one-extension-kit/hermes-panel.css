@@ -443,6 +443,22 @@ main > .main-view[hidden] { display: none !important; }
 main.main[class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"][class*="showing-x-"] > #mainChat {
   display: none;
 }
+/* The host's update banner (hermes-webui/static/index.html:399) is the FIRST
+ * child of <main class="main"> and lives outside the host's own visibility
+ * system (main.main.showing-<nome> > #main<Nome>, style.css:4916-4938), so it
+ * survives every panel: 76px of amber above whatever the extension drew
+ * (measured on the Capability Router: box at y≈45-105, router-01-abertura.png).
+ * This kit rule hides it only while an extension panel is showing, and it is
+ * scoped to > #updateBanner — never to .update-banner — because a second
+ * .update-banner (#staleClientBanner, index.html:422) is in flow, and its
+ * warning is exactly the stale-session/CSRF notice that extension proxies
+ * (router-nav.js:20-30) depend on. Specificity (1,2,1) beats
+ * .update-banner.visible (0,2,0) with no !important, for the same reason the
+ * chat rule above avoids it: a heavier hammer aimed at more than the nail.
+ * Trade-off, deliberate: the upstream-update notice no longer appears inside
+ * extension panels. It still shows in chat and in Settings → System, where the
+ * "Update Now" action actually lives. */
+main.main[class*="showing-x-"] > #updateBanner { display: none; }
 
 .hermes-panel > .hp-frame {
   flex: 1;
