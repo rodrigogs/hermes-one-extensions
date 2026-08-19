@@ -52,6 +52,16 @@
         "health_path": "/health",
         "proxy_auth": "token-v1"
       }
+    },
+    {
+      "id": "hermes-one-fork-keeper",
+      "name": "Fork Keeper",
+      "scripts": [
+        "hermes-one-fork-keeper/fork-keeper-nav.js"
+      ],
+      "stylesheets": [
+        "hermes-one-fork-keeper/fork-keeper-nav.css"
+      ]
     }
   ]
 }

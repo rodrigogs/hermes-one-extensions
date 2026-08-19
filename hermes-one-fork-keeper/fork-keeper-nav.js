@@ -144,6 +144,35 @@
                   color:var(--host-bg, #0a0a0c); font-weight:600; }
   button.commit:hover:not(:disabled) { filter:brightness(1.08); }
   button:disabled { color:var(--muted); border-color:var(--line); cursor:default; }
+  /* While the position is unknown, restarting the gateway is not the next step —
+     fixing whatever made the read fail is. A filled red button was the loudest
+     thing on a screen whose headline admits it knows nothing, which pointed the
+     operator at the one action the panel cannot vouch for. Declared after
+     button:disabled so it wins on order, like the rule above it. */
+  body.unknown button#restart { background:transparent; border-color:var(--line-strong);
+                  color:var(--muted); font-weight:400; }
+
+  /* ── sections ──────────────────────────────────────────────────────────────
+     The sidebar selects the section, the rail selects the panel — the router's
+     idiom, and the reason this panel had a 300px empty column: it registered no
+     sidebarView, so the kit deactivated every host view and had nothing to put
+     back. Measured live: sidebarWidth 300, zero active views, innerText "".
+
+     Only ever HIDING here, never asserting a display value. A reveal rule would
+     have to name one, and the elements involved disagree (#actions is flex, the
+     rest are block) — so the natural display survives, and the hidden attribute
+     keeps working for the render functions that empty a section. */
+  body:not([data-section="position"]) #state,
+  body:not([data-section="position"]) #actions,
+  body:not([data-section="position"]) #confirm,
+  body:not([data-section="position"]) #result,
+  body:not([data-section="position"]) #plan,
+  body:not([data-section="position"]) #alert,
+  body:not([data-section="schedule"]) #jobs,
+  body:not([data-section="history"]) #history { display:none; }
+  /* A section that carries nothing says so, rather than showing an empty column
+     the operator has to interpret. */
+  .empty { font-size:var(--t-small); color:var(--muted); margin:12px 0 0; }
 
   .confirm { margin:16px 0 0; padding-left:12px;
              border-left:1px solid var(--bad-text); max-width:68ch; }
@@ -197,7 +226,12 @@
   .runs .job { color:var(--muted); }
   .runs .ok { color:var(--ok-text); }
   .runs .bad { color:var(--bad-text); }
-</style></head><body>
+  /* The section that is showing is the first thing under the masthead, so it owns
+     the gap. .group's own 30px is the spacing BETWEEN stacked groups, which no
+     longer applies when only one is up. */
+  body[data-section="schedule"] #jobs,
+  body[data-section="history"] #history { margin-top:18px; }
+</style></head><body data-section="position">
   <!--
     One masthead, then facts. No subtitle: "keep this fork current" restates the
     title, and DESIGN.md §2 forbids a subtitle that carries no fact the title
@@ -213,7 +247,7 @@
     <p class="headline">Reading the fork's position…</p>
   </div>
 
-  <div class="row">
+  <div class="row" id="actions">
     <button id="refresh">Refresh</button>
     <button id="dry" disabled>Dry run</button>
     <button id="sync" class="commit" disabled>Sync now</button>
@@ -297,11 +331,18 @@
 
   const short = (sha) => (typeof sha === 'string' ? sha.slice(0, 9) : '');
 
+  /* Months named here rather than by toLocaleDateString(undefined, …), which reads
+     the BROWSER's locale and printed "18 de ago." next to labels that all say
+     "Last run" and "Next run" — measured on this install. One language per screen;
+     when the panel's chrome is translated, this table is what moves with it. */
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
   function when(iso) {
     if (!iso) return '';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '';
-    const day = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+    const day = String(d.getDate()).padStart(2, '0') + ' ' + MONTHS[d.getMonth()];
     const time = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
     return day + ' ' + time;
   }
@@ -437,11 +478,19 @@
      */
     if (typeof s.behind !== 'number' || !Number.isFinite(s.behind)) {
       setPill('unknown', 'warn');
+      // Marks the whole document, not just this block: the pending-restart notice
+      // lives further down and its filled button must step back while the panel
+      // cannot vouch for a reading.
+      document.body.classList.add('unknown');
       clear(stateEl).append(
         el('p', 'headline warn', 'Position unknown'),
         el('p', 'note', s.error ? String(s.error)
           : 'The status response carried no commit count, so this panel cannot say how far behind the fork is.'),
       );
+      // What to do about it, when the bridge knows. An operator reading "unknown"
+      // needs the next move, and the bridge is the only layer that can see why the
+      // read failed.
+      if (s.fix) stateEl.append(el('p', 'note', String(s.fix)));
       $('dry').disabled = true;
       $('sync').disabled = true;
       hideConfirm();
@@ -451,6 +500,7 @@
       return;
     }
 
+    document.body.classList.remove('unknown');
     const behind = s.behind;
     const ahead = s.ahead ?? 0;
     const actionable = behind > 0 && !s.dirty;
@@ -508,26 +558,54 @@
     const section = $('jobs');
     const sync = (o && o.sync) || {};
     const prs = (o && o.prs) || {};
+    // Published for the sidebar row, which cannot count rows it does not draw.
+    document.body.dataset.countSchedule = String((sync.name ? 1 : 0) + (prs.name ? 1 : 0));
     if (!sync.name && !prs.name) { section.hidden = true; return; }
     section.hidden = false;
     const rows = clear($('jobs-rows'));
 
+    /*
+     * A zero is not an outcome.
+     *
+     * "merged 0 commits" and "0 rebased, 0 needing attention" were both rendered
+     * as if they were findings, so a run that correctly did nothing read like a
+     * report of work. Say what happened in words; a count earns its place on
+     * screen only when it is non-zero.
+     */
+    const outcomeOf = (job, verb) => {
+      if (job.result) {
+        if (job.result !== 'synced') return job.result.replace(/_/g, ' ');
+        const n = job.behind;
+        if (n === 0) return 'already current, nothing to merge';
+        if (typeof n !== 'number') return verb;
+        return verb + ' ' + n + ' commit' + (n === 1 ? '' : 's');
+      }
+      if (job.rebased === undefined) return undefined;
+      const done = job.rebased || 0;
+      const stuck = job.failed || 0;
+      if (!done && !stuck) return 'nothing needed rebasing';
+      if (!stuck) return done + ' rebased';
+      return done + ' rebased, ' + stuck + ' needing attention';
+    };
+
+    /*
+     * Both dates used to sit in the same column with the second row's label left
+     * EMPTY, so the last run printed directly above the next one with nothing
+     * saying which was which — measured on this install, "18 Aug 02:15" over
+     * "20 Aug 02:15" and the operator left to infer it from position. Every row
+     * names itself now, and the job's own row carries the outcome.
+     */
     const describe = (job, label, verb) => {
       if (!job || !job.name) return;
-      const last = job.last_run
+      addRow(rows, label, outcomeOf(job, verb) || 'no result recorded',
+        job.enabled === false ? 'paused' : scheduleText(job.schedule));
+      addRow(rows, 'Last run', job.last_run
         ? when(job.last_run) + ' · ' + ago(job.last_run)
-        : 'never run';
-      const outcome = job.result
-        ? (job.result === 'synced'
-            ? verb + ' ' + (job.behind ?? '?') + ' commit' + (job.behind === 1 ? '' : 's')
-            : job.result.replace(/_/g, ' '))
-        : (job.rebased !== undefined
-            ? job.rebased + ' rebased, ' + (job.failed ?? 0) + ' needing attention'
-            : undefined);
-      addRow(rows, label, last, outcome);
+        : 'never run');
       const next = nextRun(job);
-      addRow(rows, '', next ? next : 'next run unknown',
-        scheduleText(job.schedule) + (job.enabled === false ? ' · paused' : ''));
+      addRow(rows, 'Next run', next || 'unknown',
+        next ? undefined
+             : 'the registry leaves next_run empty, and this schedule is not a shape this panel will project');
     };
 
     describe(sync, 'Upstream sync', 'merged');
@@ -550,15 +628,34 @@
   function renderHistory(o) {
     const section = $('history');
     const runs = (o && o.history) || [];
+    document.body.dataset.countHistory = String(runs.length);
     if (!runs.length) { section.hidden = true; return; }
     section.hidden = false;
     const grid = clear($('history-rows'));
-    for (const run of runs.slice(0, 6)) {
-      const ok = run.status === 'completed';
+
+    /*
+     * Six rows all reading "completed" carry one bit of information between them
+     * — measured on this install, exactly that. A failure is what deserves a line
+     * of its own; a run that worked deserves to be counted. So every failure is
+     * listed, and the successes collapse to one row with the window they cover.
+     */
+    const shown = runs.slice(0, 12);
+    const failed = shown.filter((r) => r.status !== 'completed');
+    const done = shown.filter((r) => r.status === 'completed');
+
+    for (const run of failed) {
       grid.append(el('span', 'job', run.job === 'prs' ? 'prs' : 'sync'));
-      grid.append(el('span', ok ? 'ok' : 'bad', run.status || '?'));
-      const detail = when(run.started_at) + (run.error ? ' · ' + run.error : '');
-      grid.append(el('span', null, detail));
+      grid.append(el('span', 'bad', run.status || '?'));
+      grid.append(el('span', null, when(run.started_at) + (run.error ? ' · ' + run.error : '')));
+    }
+    if (done.length) {
+      // history arrives newest-first, so the oldest kept run is the last element.
+      const newest = done[0], oldest = done[done.length - 1];
+      grid.append(el('span', 'job', 'sync + prs'));
+      grid.append(el('span', 'ok', done.length === 1 ? 'completed' : done.length + ' completed'));
+      grid.append(el('span', null, done.length === 1
+        ? when(newest.started_at)
+        : when(oldest.started_at) + ' to ' + when(newest.started_at)));
     }
   }
 
@@ -593,6 +690,7 @@
       render(await call('overview'));
     } catch (err) {
       setPill('unreachable', 'bad');
+      document.body.classList.add('unknown');
       clear(stateEl).append(el('p', 'note', 'Status unavailable — ' + (err.message || err)));
       $('dry').disabled = true;
       $('sync').disabled = true;
@@ -671,6 +769,106 @@
 </body></html>`;
   }
 
+  /* ── the sidebar ───────────────────────────────────────────────────────────
+   *
+   * This panel shipped without a sidebarView, and the kit's show() deactivates
+   * EVERY .panel-view in the column so exactly one can be active. With nothing of
+   * ours to activate, the result was a 300px column containing nothing —
+   * measured live: sidebarWidth 300, zero active views, innerText "". The kit's
+   * own comment calls that "better an empty rail than a stale list", which is
+   * true of the two options it compares and misses the third: give the column
+   * something that belongs there.
+   *
+   * What belongs there is the material that was crowding the status out of the
+   * main view. The rail picks the panel, the sidebar picks the section — the
+   * router's idiom, and the reason its column reads as part of the host.
+   */
+  const SECTIONS = [
+    ['position', 'Position'],
+    ['schedule', 'Schedule'],
+    ['history', 'History'],
+  ];
+
+  let sideNav = null;
+  let sectionObserver = null;
+
+  function frameDoc() {
+    const frame = document.querySelector('#' + PANEL_ID + ' iframe');
+    if (!frame) return null;
+    // srcdoc on the same origin, so this is readable — the try is for the window
+    // between element creation and first parse, where it is null.
+    try { return frame.contentDocument || null; } catch (_) { return null; }
+  }
+
+  function selectSection(name) {
+    const doc = frameDoc();
+    // The attribute IS the state: the panel's own CSS keys off body[data-section],
+    // so there is one source of truth and nothing here to keep in step with it.
+    if (doc && doc.body) doc.body.dataset.section = name;
+    syncSections();
+  }
+
+  function syncSections() {
+    if (!sideNav) return;
+    const body = (frameDoc() || {}).body;
+    const active = (body && body.dataset.section) || 'position';
+    for (const button of sideNav.querySelectorAll('.fk-section')) {
+      button.classList.toggle('is-on', button.dataset.tab === active);
+      button.setAttribute('aria-current', String(button.dataset.tab === active));
+      const slot = button.querySelector('.fk-section-n');
+      if (!slot) continue;
+      // The count comes from the panel, which is the only thing that knows how
+      // many rows it drew. Absent until the first render lands, and blank rather
+      // than "0" — a zero here would claim a reading the panel has not made yet.
+      const n = body && body.dataset['count' + button.dataset.tab.replace(/^./, (c) => c.toUpperCase())];
+      slot.textContent = n === undefined || n === '' || n === '0' ? '' : n;
+    }
+  }
+
+  function watchSections() {
+    const doc = frameDoc();
+    if (!doc || !doc.body) return;
+    syncSections();
+    if (sectionObserver) sectionObserver.disconnect();
+    // The panel rewrites data-count-* on every render and data-section on every
+    // section change; both are attributes on the same node.
+    sectionObserver = new MutationObserver(syncSections);
+    sectionObserver.observe(doc.body, {
+      attributes: true,
+      attributeFilter: ['data-section', 'data-count-schedule', 'data-count-history'],
+    });
+  }
+
+  function buildSidebar(view) {
+    // .panel-head mirrors the host's own — the stylesheet pins the measurements —
+    // so this column and the conversation list read as one system.
+    const head = document.createElement('div');
+    head.className = 'panel-head';
+    const title = document.createElement('span');
+    title.textContent = 'Fork Keeper';
+    head.append(title);
+    view.append(head);
+
+    const list = document.createElement('nav');
+    list.className = 'fk-sections';
+    list.setAttribute('aria-label', 'Fork Keeper sections');
+    for (const [tab, label] of SECTIONS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'fk-section';
+      button.dataset.tab = tab;
+      button.append(document.createTextNode(label));
+      const count = document.createElement('span');
+      count.className = 'fk-section-n';
+      button.append(count);
+      button.addEventListener('click', () => selectSection(tab));
+      list.append(button);
+    }
+    view.append(list);
+    sideNav = list;
+    syncSections();
+  }
+
   function mount() {
     let panel = document.getElementById(PANEL_ID);
     if (panel) return panel;
@@ -699,6 +897,10 @@
     const frame = document.createElement('iframe');
     frame.style.cssText = 'width:100%;height:100%;border:0;background:transparent;';
     frame.setAttribute('title', 'Fork Keeper');
+    // Wired BEFORE srcdoc is assigned: setting srcdoc starts the parse, and a
+    // listener added afterwards can miss a load that has already fired for a
+    // document with no external resources to wait on.
+    frame.addEventListener('load', watchSections);
     frame.srcdoc = panelHtml();
     panel.appendChild(frame);
     (document.querySelector('main') || document.body).appendChild(panel);
@@ -717,7 +919,18 @@
     const handle = nav.register({
       token: TOKEN,
       label: 'Fork Keeper',
+      /*
+       * navClass was MISSING, and the kit interpolates it unguarded: the rail
+       * button shipped with class "rail-btn nav-tab has-tooltip undefined" and an
+       * attribute data-undefined="true" — both read out of the live DOM, on two
+       * elements. The kit also uses [data-${navClass}] as its
+       * already-installed guard, so every extension that omitted this shared one
+       * selector. The three sibling panels all pass it.
+       */
+      navClass: 'hermes-one-fork-keeper-nav',
+      title: 'Fork Keeper',
       iconPath: ICON,
+      sidebarView: buildSidebar,
       /*
        * adopt THEN show, in that order.
        *

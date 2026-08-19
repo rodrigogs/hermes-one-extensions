@@ -1,0 +1,91 @@
+/* Fork Keeper — the host-document half of the panel.
+ *
+ * This file exists because the panel had no sidebar. The kit's show() deactivates
+ * every .panel-view in the column so exactly one can be active, and Fork Keeper
+ * registered none — measured on the running shell: sidebarWidth 300, zero active
+ * views, innerText "". A 300px column containing nothing is what the operator was
+ * asking about.
+ *
+ * The panel head mirrors the host's own .panel-head, measured off the running
+ * shell — 11px/600 uppercase at .08em in --muted, 41px min-height, one hairline
+ * below — so this column and the conversation list read as one system. The rail
+ * picks the panel; these rows pick the section.
+ *
+ * HOST tokens only. This stylesheet loads in the host document, where the panel's
+ * own --host-* tokens do not exist. Measured live on the running shell: --bg,
+ * --text, --muted and --accent are defined; --font-sans and --font-mono are NOT,
+ * so type inherits rather than naming a family that resolves to nothing.
+ */
+
+/* .active is the host's own switch for "show exactly one panel-view". Setting
+   display unconditionally outranks it and stacks two extension sidebars in the
+   column at once — measured on the router and memory panels before their fix. */
+.sidebar .panel-view[data-panel-token="fork-keeper"].active {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sidebar .panel-view[data-panel-token="fork-keeper"] .panel-head {
+  /* Longhands, not the font shorthand: `font: 600 11px/1.3 inherit` is a parse
+     error — the shorthand requires a family, and `inherit` is only valid as the
+     whole value — so the declaration is dropped and these rows fall back to the
+     UA default. The family is deliberately unset: it inherits. */
+  min-height: 41px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--muted);
+  border-bottom-color: color-mix(in srgb, var(--muted) 28%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.fk-sections { display: flex; flex-direction: column; padding: 8px; gap: 2px; }
+
+.fk-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+/* The hover plane is mixed from --text rather than named as --hover-bg: the host
+   does define that token, but only four are guaranteed, and a plane derived from
+   the foreground follows any skin's polarity for free. */
+.fk-section:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.fk-section.is-on {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+.fk-section-n { color: var(--muted); font-size: 12px; font-weight: 500; line-height: 1; }
+
+/* The host's 44px floor under a coarse pointer applies to every row it draws. */
+@media (hover: none) and (pointer: coarse) {
+  .fk-section { min-height: 44px; }
+}
+
+/* ── sidebar-yield, as the router and the Office both do ────────────────────
+   The sections fill this track now, so a 1px line of page background between the
+   panel and the rail is a seam the real sidebar never has. Bounded at 641px, the
+   host's own collapse breakpoint: below it the rail is gone and this sidebar IS
+   the navigation. */
+@media (min-width: 641px) {
+  .layout:has(> main.main.showing-x-fork-keeper) > .sidebar:not(.mobile-open) {
+    border-right-width: 0;
+  }
+}
