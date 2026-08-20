@@ -216,7 +216,13 @@ test('buttons meet the 44px target and narrow viewports are handled', () => {
 test('the panel reports its own last read, and drops it when narrow', () => {
   // The one self-referential fact DESIGN.md rule 2 allows: nothing else on
   // screen can say when THIS panel last looked.
-  assert.match(markup, /'checked', 'checked '/, 'the panel does not report its own last read');
+  // Whitespace-tolerant on purpose. The assertion is that the panel reports its
+  // OWN last read; it used to also pin that the two arguments sat on one line,
+  // which broke the moment the line grew a second clause (the age of the upstream
+  // ref the count was computed against). Still discriminating: removing the
+  // 'checked' paragraph fails this, and so does dropping the literal text.
+  assert.match(markup, /el\('p', 'checked',[\s\S]{0,120}'checked '/,
+    'the panel does not report its own last read');
   assert.match(markup, /@media \(max-width: 420px\) \{ \.checked \{ display:none; \} \}/);
 });
 

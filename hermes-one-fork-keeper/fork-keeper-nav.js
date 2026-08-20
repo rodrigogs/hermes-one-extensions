@@ -526,7 +526,20 @@
         'The worktree has uncommitted changes. Sync will refuse until it is clean — '
         + 'an update must never decide what happens to unsaved work.'));
     }
-    stateEl.append(el('p', 'checked', 'checked ' + when(new Date().toISOString())));
+    /*
+     * Two different freshnesses, and conflating them is how a stale reading reads
+     * as a current one. "checked" is when THIS panel last polled. The commit count
+     * beside it is only as fresh as the upstream ref the CLI compared against, and
+     * sync-fork deliberately does not fetch — the cron fetches before calling it,
+     * a panel poll must not touch the network. So an "Up to date" here can be up
+     * to one cron interval behind reality, and it now says so instead of implying
+     * otherwise.
+     */
+    const fetched = o && o.upstream_fetched_at;
+    const fetchedAge = fetched ? ago(fetched) : '';
+    stateEl.append(el('p', 'checked',
+      'checked ' + when(new Date().toISOString())
+      + (fetchedAge ? ' · upstream ref fetched ' + fetchedAge : '')));
 
     $('dry').disabled = !actionable || busy;
     $('sync').disabled = !actionable || busy;
