@@ -619,6 +619,23 @@
     // merge and cleared by whoever restarts, so its presence IS the finding.
     if (!pending) { box.hidden = true; return; }
     box.hidden = false;
+    /*
+     * Exactly one filled control (DESIGN.md §4). Both #sync and #restart carry
+     * .commit, so a fork that is behind AND carries a pending restart painted
+     * TWO — seen in the render once the position became readable, which is the
+     * state the panel spends most of its life in.
+     *
+     * The panel's question is the fork's position, so Sync is the primary action
+     * whenever it is offered and the restart steps back to an outline. When the
+     * position is unknown neither is primary: the panel cannot vouch for a
+     * reading, so it must not paint a restart as the recommended next move
+     * either. Hence readable AND not-offered, not merely not-offered.
+     *
+     * Read off #sync's own disabled state rather than re-deriving actionable
+     * here, so the two can never disagree about whether Sync is on offer.
+     */
+    const readable = !document.body.classList.contains('unknown');
+    $('restart').classList.toggle('commit', readable && $('sync').disabled);
     $('alert-detail').textContent =
       'The merge landed on disk but the running process predates it. Restart to pick up '
       + short(pending) + '. The cron cannot do this itself — a scheduled job restarting '

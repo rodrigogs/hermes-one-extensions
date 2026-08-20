@@ -404,3 +404,24 @@ test('a failed status refresh disarms the confirm row', () => {
   assert.match(refresh, /hideConfirm\(\)/,
     'the error path leaves the confirm row armed against an unknown status');
 });
+test('a pending restart never adds a second filled control', () => {
+  // Sibling of the confirm-row case above, same rule (DESIGN.md §4: exactly one
+  // filled control) and the same cause: #sync and #restart both carry .commit.
+  // Once the position became readable, a fork that was behind AND carried a
+  // pending restart painted BOTH filled — seen in the render, not the source.
+  assert.match(markup, /\$\('restart'\)\.classList\.toggle\('commit',/,
+    'renderAlert does not decide whether the restart is the filled control');
+
+  // The condition is readable AND not-offered, not merely not-offered. When the
+  // position is unknown the panel cannot vouch for a reading, so promoting the
+  // restart to the recommended action would be the opposite of honest — and
+  // #sync is disabled in that state, so a naive check would do exactly that.
+  assert.match(markup, /const readable = !document\.body\.classList\.contains\('unknown'\)/,
+    'the restart is promoted without first establishing the position was readable');
+  const at = markup.indexOf("$('restart').classList.toggle('commit'");
+  assert.ok(at > -1, 'the toggle is missing');
+  const line = markup.slice(at, markup.indexOf('\n', at));
+  assert.match(line, /readable/, 'the toggle ignores whether the position was readable');
+  assert.match(line, /\$\('sync'\)\.disabled/,
+    'the toggle re-derives whether Sync is on offer instead of reading its state');
+});
