@@ -116,7 +116,7 @@
 
     const list = el('nav', 'facts-modes');
     list.setAttribute('aria-label', 'Modo de visualiza\u00e7\u00e3o');
-    for (const [id, label] of [['modeList', 'Lista'], ['modeGraph', 'Grafo']]) {
+    for (const [id, label] of [['modeList', 'Lista'], ['modeGraph', 'Grafo'], ['modeHealth', 'Saúde']]) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'facts-mode';
@@ -183,6 +183,32 @@
       childList: true, characterData: true,
     });
   }
+
+  // ── the hand-off the console calls ─────────────────────────────────────────
+  // "Ask the agent about this" in the console's inspector. The console runs in a
+  // srcdoc iframe, so it is same-origin and reaches this object as
+  // window.parent.__hermesFactExplorer. What it asks for is one thing: put text
+  // in the shell's composer and bring the conversation up. Never send — the
+  // operator finishes the question and presses Enter themselves.
+  //
+  // The composer is the host's #msg textarea. Routing the view change through
+  // window.switchPanel is what the extension kit does too: it keeps the host's
+  // state machine coherent and lets the kit release this panel on the way out.
+  function ask(text, meta) {
+    const composer = document.getElementById('msg');
+    if (!composer) throw new Error('composer #msg not found');
+    if (typeof window.switchPanel === 'function') {
+      try { window.switchPanel('chat', { bypassSettingsGuard: true }); } catch (error) { /* stay */ }
+    }
+    const existing = composer.value || '';
+    composer.value = existing && !/\n\s*$/.test(existing) ? `${existing}\n${text}` : `${existing}${text}`;
+    // The host resizes the box and enables Send on `input`, not on assignment.
+    composer.dispatchEvent(new Event('input', { bubbles: true }));
+    composer.focus();
+    try { composer.setSelectionRange(composer.value.length, composer.value.length); } catch (error) { /* not a textarea */ }
+    if (meta && meta.factId) composer.dataset.factExplorerFact = String(meta.factId);
+  }
+  window.__hermesFactExplorer = { ask };
 
   if (!window.HermesPanelNav) {
     console.error('[hermes-one-fact-explorer] Hermes One Extension Kit did not load; the Graph '
